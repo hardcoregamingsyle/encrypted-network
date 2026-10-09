@@ -1,0 +1,11 @@
+{
+  "name": "hrdlock",
+  "version": "0.1.0",
+  "description": "small file locker with a homemade cipher",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/cipher.test.js && node test/server.test.js"
+  },
+  "license": "MIT"
+}
