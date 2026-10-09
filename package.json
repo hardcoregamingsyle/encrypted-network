@@ -7,9 +7,11 @@
   "scripts": {
     "dev:web": "vite",
     "dev:api": "wrangler pages dev --proxy 5173 --port 8788 --d1 DB --r2 FILES",
-    "build": "vite build",
+    "build": "node scripts/check-node.mjs && vite build",
     "preview": "vite build && wrangler pages dev dist --port 8788 --d1 DB --r2 FILES",
     "setup": "node scripts/setup-dev.mjs",
+    "check:deploy": "node scripts/check-deploy.mjs",
+    "takedown": "node scripts/takedown.mjs",
     "db:local": "wrangler d1 migrations apply DB --local",
     "test": "vitest run"
   },
