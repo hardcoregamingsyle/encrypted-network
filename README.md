@@ -29,8 +29,14 @@ Tests
 
     npm test
 
+Deleting
+
+When you upload, the server gives your browser a secret delete key and keeps only a hash of it. Your browser remembers the key, so only the browser that uploaded a file shows the delete button for it. If you clear the site data in your browser you can no longer delete that file.
+
 Limits
 
-Files can be up to 50 MB. There are no accounts, so anyone who can open the site can see the list of locked file names and download the locked files. They still need the password to open them.
+Files can be up to 50 MB. One address can upload 20 files every 10 minutes and the whole storage stops at 1 GB. There are no accounts, so anyone who can open the site can see the list of locked file names and download the locked files. They still need the password to open them.
+
+Locking needs a secure page (https, or localhost) because the browser only gives the crypto tools to those.
 
 An AI coding assistant helped write this code.
