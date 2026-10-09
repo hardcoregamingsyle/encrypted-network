@@ -1,52 +1,46 @@
 hrdlock
 
-A small site where you lock a file, store it, and unlock it later with a password.
+A site for signed documents and signed chat. You lock a file in your browser and publish it. Anyone with the link can check that the file is the latest version and that nobody changed it.
 
-How it works
+What it does
 
-1. You pick a file and press lock.
-2. The page makes a random password and locks the whole file in your browser, every byte of it. The file name is locked too.
-3. Only the locked file is sent to the server. It is saved as yourfile.ext.hrdlock
-4. To get it back you press unlock, type the password, the locked file comes down to your computer and is opened there. The server never sees the password or the real file.
+- Everyone makes a signing key in their browser. The ID of a person is the hash of their public key.
+- A file is locked in your browser with AES-256-GCM, and then a second homemade cipher goes on top. The password never leaves your browser. The server only stores the locked file.
+- Every version of a document is a signed record, and every record points to the one before it, so the versions form a chain. Revoking a document is also a signed record.
+- The server signs where the chain is now (a checkpoint) and the newest version of each document. The page checks all of it in your browser, not on the server.
+- Chat messages are signed too. Each message shows whether its signature checked out.
+- The Verify page is for officials. They can pin the server key, check a document, check a saved bundle without any network, compare a file with its fingerprint, and audit the whole ledger.
 
-If you lose the password the file cannot be opened. There is no reset.
+What it does not do
 
-The cipher
+- The server could hide a newer version. You only catch that if you pinned an older checkpoint or audited the whole ledger.
+- The homemade cipher has not been reviewed by anyone. The AES-256-GCM layer is the standard one.
+- Times come from the signers and the server clock. There is no trusted timestamp service.
+- A key is only a key. Nobody checks who the person really is.
+- The ledger is public. Unlisted only hides a document from the list. Labels, names and chat messages are public and cannot be removed.
+- It is a prototype and nobody independent has reviewed it. Do not use it for real legal or government records until that happens.
 
-The cipher is homemade, it is in public/hrdcipher.js. The password is turned into keys with PBKDF2 (that part is a normal tool). After that my own code takes over. It makes a keystream by mixing numbers with add, rotate, xor and multiply, and every byte also goes through a shuffled lookup table together with the byte before it. A check code (HMAC) on the end tells you if the password is wrong or the file was changed.
+Run it on your computer
 
-I made this to learn. Nobody has checked it. Do not use it for anything that really matters.
+You need Node 22 or newer.
 
-Checking a file
+    npm install
+    npm run setup
+    npm run build
+    npm run preview
 
-When a file is locked, the page also makes its fingerprint, which is the SHA-256 of the real file. It is a 64 character code that changes if even one byte of the file changes. The fingerprint is shown next to the password and is also locked inside the file.
+Then open http://127.0.0.1:8788
 
-When you unlock a file the page checks the result against the fingerprint inside. There is also a Check a file box at the bottom of the page. Pick any file, paste the fingerprint you saved, and it tells you if the file is exactly the one that was locked.
-
-The server does not keep the fingerprint. If it did, anyone with a copy of a file could test whether that file is stored here.
-
-The password is not stored inside the file. A wrong password is caught by the check code on the end of the locked file, before anything is unlocked, and the same check code catches any changed bit.
-
-Run it
-
-You need node 18 or newer. There is nothing to install.
-
-    node server.js
-
-Then open http://127.0.0.1:3000 in a browser.
+To work on the pages, run npm run dev:web in one terminal and npm run dev:api in another, then open http://127.0.0.1:8788
 
 Tests
 
     npm test
 
-Deleting
+To test against a running server: node scripts/e2e.mjs http://127.0.0.1:8788
 
-When you upload, the server gives your browser a secret delete key and keeps only a hash of it. Your browser remembers the key, so only the browser that uploaded a file shows the delete button for it. If you clear the site data in your browser you can no longer delete that file.
+Put it online
 
-Limits
-
-Files can be up to 50 MB. One address can upload 20 files every 10 minutes and the whole storage stops at 1 GB. There are no accounts, so anyone who can open the site can see the list of locked file names and download the locked files. They still need the password to open them.
-
-Locking needs a secure page (https, or localhost) because the browser only gives the crypto tools to those.
+It is made for Cloudflare Pages with D1 and R2. The steps and the limits are in scripts/DEPLOY.md.
 
 An AI coding assistant helped write this code.
