@@ -20,7 +20,9 @@ async function main() {
     method: 'POST', headers: { 'x-file-name': encodeURIComponent('notes.txt') }, body: locked
   });
   assert.strictEqual(res.status, 201);
-  assert.strictEqual((await res.json()).name, 'notes.txt.hrdlock');
+  const first = await res.json();
+  assert.strictEqual(first.name, 'notes.txt.hrdlock');
+  assert.match(first.token, /^[0-9a-f]{32}$/);
 
   // same name again gets a number
   res = await fetch(base + '/api/files', {
@@ -58,6 +60,18 @@ async function main() {
   assert.strictEqual(res.status, 400);
   res = await fetch(base + '/api/files/missing.hrdlock');
   assert.strictEqual(res.status, 404);
+
+  // deleting needs the token that came with the upload
+  const target = '/api/files/' + encodeURIComponent('notes.txt.hrdlock');
+  res = await fetch(base + target, { method: 'DELETE' });
+  assert.strictEqual(res.status, 403);
+  res = await fetch(base + target, { method: 'DELETE', headers: { 'x-delete-token': '0'.repeat(32) } });
+  assert.strictEqual(res.status, 403);
+  res = await fetch(base + target, { method: 'DELETE', headers: { 'x-delete-token': first.token } });
+  assert.strictEqual(res.status, 200);
+  res = await fetch(base + target);
+  assert.strictEqual(res.status, 404);
+  assert.strictEqual((await (await fetch(base + '/api/files')).json()).length, 2);
 
   // static files
   res = await fetch(base + '/');

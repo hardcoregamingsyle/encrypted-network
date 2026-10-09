@@ -5,12 +5,17 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const CLOUD = process.env.CLOUD_DIR || path.join(__dirname, 'cloud');
 const PUBLIC = path.join(__dirname, 'public');
+const META = path.join(CLOUD, '.meta.json');
 const MAX_UPLOAD = 50 * 1024 * 1024;
+const MAX_TOTAL = 1024 * 1024 * 1024;
+const RATE_COUNT = 20;
+const RATE_WINDOW = 10 * 60 * 1000;
 const MAGIC = Buffer.from('HRDLOCK1');
 
 const TYPES = {
@@ -33,6 +38,44 @@ function send(res, status, body, headers) {
 function sendJson(res, status, obj) {
   send(res, status, JSON.stringify(obj), { 'Content-Type': 'application/json' });
 }
+
+// ---------- delete tokens ----------
+// Every upload gets a secret token. Only its hash is kept here, the
+// browser that uploaded keeps the real one and uses it to delete.
+
+function loadMeta() {
+  try { return JSON.parse(fs.readFileSync(META, 'utf8')); } catch (e) { return {}; }
+}
+
+function saveMeta(meta) {
+  const tmp = META + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(meta));
+  fs.renameSync(tmp, META);
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+// ---------- upload limit per address ----------
+
+const hits = new Map();
+
+function tooMany(ip) {
+  const now = Date.now();
+  if (hits.size > 1000) {
+    for (const [key, times] of hits) {
+      if (times.every((t) => now - t >= RATE_WINDOW)) hits.delete(key);
+    }
+  }
+  const times = (hits.get(ip) || []).filter((t) => now - t < RATE_WINDOW);
+  const blocked = times.length >= RATE_COUNT;
+  if (!blocked) times.push(now);
+  hits.set(ip, times);
+  return blocked;
+}
+
+// ---------- files ----------
 
 // turn whatever name the browser sent into something safe to save
 function safeName(name) {
@@ -88,15 +131,33 @@ function listFiles() {
     .sort((a, b) => (a.uploaded < b.uploaded ? 1 : -1));
 }
 
+// the file name from /api/files/<name>, or null if it looks wrong
+function fileNameFrom(url) {
+  let name;
+  try { name = decodeURIComponent(url.pathname.substring('/api/files/'.length)); }
+  catch (e) { return null; }
+  if (name !== path.basename(name) || !name.endsWith('.hrdlock')) return null;
+  return name;
+}
+
 async function handleApi(req, res, url) {
   if (url.pathname === '/api/files' && req.method === 'GET') {
     return sendJson(res, 200, listFiles());
   }
 
   if (url.pathname === '/api/files' && req.method === 'POST') {
+    if (tooMany(req.socket.remoteAddress)) {
+      res.setHeader('Connection', 'close');
+      return sendJson(res, 429, { error: 'too many uploads, try again in a few minutes' });
+    }
     if (Number(req.headers['content-length']) > MAX_UPLOAD) {
       res.setHeader('Connection', 'close');
       return sendJson(res, 413, { error: 'file is too big, the limit is 50 MB' });
+    }
+    const used = listFiles().reduce((sum, f) => sum + f.size, 0);
+    if (used + (Number(req.headers['content-length']) || 0) > MAX_TOTAL) {
+      res.setHeader('Connection', 'close');
+      return sendJson(res, 507, { error: 'the storage is full' });
     }
     let body;
     try {
@@ -109,19 +170,35 @@ async function handleApi(req, res, url) {
     }
     let original = 'file';
     try { original = decodeURIComponent(req.headers['x-file-name'] || 'file'); } catch (e) {}
-    return sendJson(res, 201, { name: saveLocked(original, body) });
+    const stored = saveLocked(original, body);
+    const token = crypto.randomBytes(16).toString('hex');
+    const meta = loadMeta();
+    meta[stored] = { token: hashToken(token) };
+    saveMeta(meta);
+    return sendJson(res, 201, { name: stored, token: token });
   }
 
   if (url.pathname.startsWith('/api/files/') && req.method === 'GET') {
-    let name;
-    try { name = decodeURIComponent(url.pathname.substring('/api/files/'.length)); }
-    catch (e) { return sendJson(res, 400, { error: 'bad name' }); }
-    if (name !== path.basename(name) || !name.endsWith('.hrdlock')) {
-      return sendJson(res, 400, { error: 'bad name' });
-    }
+    const name = fileNameFrom(url);
+    if (!name) return sendJson(res, 400, { error: 'bad name' });
     const full = path.join(CLOUD, name);
     if (!fs.existsSync(full)) return sendJson(res, 404, { error: 'file not found' });
     return send(res, 200, fs.readFileSync(full), { 'Content-Type': 'application/octet-stream' });
+  }
+
+  if (url.pathname.startsWith('/api/files/') && req.method === 'DELETE') {
+    const name = fileNameFrom(url);
+    if (!name) return sendJson(res, 400, { error: 'bad name' });
+    const meta = loadMeta();
+    const given = Buffer.from(hashToken(req.headers['x-delete-token'] || ''), 'hex');
+    const real = meta[name] ? Buffer.from(meta[name].token, 'hex') : null;
+    if (!real || !crypto.timingSafeEqual(given, real)) {
+      return sendJson(res, 403, { error: 'you can only delete files you uploaded from this browser' });
+    }
+    try { fs.unlinkSync(path.join(CLOUD, name)); } catch (e) {}
+    delete meta[name];
+    saveMeta(meta);
+    return sendJson(res, 200, { ok: true });
   }
 
   return sendJson(res, 404, { error: 'not found' });
