@@ -17,6 +17,16 @@ The cipher is homemade, it is in public/hrdcipher.js. The password is turned int
 
 I made this to learn. Nobody has checked it. Do not use it for anything that really matters.
 
+Checking a file
+
+When a file is locked, the page also makes its fingerprint, which is the SHA-256 of the real file. It is a 64 character code that changes if even one byte of the file changes. The fingerprint is shown next to the password and is also locked inside the file.
+
+When you unlock a file the page checks the result against the fingerprint inside. There is also a Check a file box at the bottom of the page. Pick any file, paste the fingerprint you saved, and it tells you if the file is exactly the one that was locked.
+
+The server does not keep the fingerprint. If it did, anyone with a copy of a file could test whether that file is stored here.
+
+The password is not stored inside the file. A wrong password is caught by the check code on the end of the locked file, before anything is unlocked, and the same check code catches any changed bit.
+
 Run it
 
 You need node 18 or newer. There is nothing to install.
