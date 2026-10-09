@@ -1,0 +1,22 @@
+/* About page. */
+
+.about-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.about-section h2 {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xl);
+}
+
+.about-section p + p,
+.about-section p + ul,
+.about-section ul + p {
+  margin-top: var(--space-1);
+}
+
+.about-section .ui-list li + li {
+  margin-top: var(--space-1);
+}
