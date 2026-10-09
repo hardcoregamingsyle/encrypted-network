@@ -1,0 +1,262 @@
+/* Verify page. Class names start with verify-. Colours and sizes come from tokens.css. */
+
+.verify-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-bottom: var(--space-6);
+}
+
+/* table of contents */
+
+.verify-toc ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.verify-toc a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-size);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-accent-text);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.verify-toc a:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+}
+
+/* a section card */
+
+.verify-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  scroll-margin-top: calc(var(--nav-height) + var(--space-2));
+}
+
+.verify-section__title {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+
+.verify-section__intro {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-lg);
+}
+
+.verify-section__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.verify-subtitle {
+  margin: 0 0 var(--space-0);
+  font-size: var(--text-md);
+}
+
+.verify-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.verify-block p {
+  margin: 0;
+}
+
+.verify-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.verify-mono-input {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* status lines that appear and disappear: keep a little room so the page does not jump */
+
+.verify-live {
+  min-height: 1.75rem;
+}
+
+.verify-live p,
+.verify-note {
+  margin: 0;
+}
+
+.verify-note {
+  min-height: 1.5rem;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.verify-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.verify-keyline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* long hashes must wrap instead of widening the page */
+
+.verify-section .ui-hash,
+.verify-fp {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.verify-fp {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* the loud warning for a key that differs from the pin */
+
+.verify-alarm {
+  padding: var(--space-0);
+  border: 3px solid var(--color-bad);
+  border-radius: var(--radius-lg);
+  background: var(--color-bad-bg);
+}
+
+.verify-alarm .ui-callout__title {
+  font-size: var(--text-lg);
+}
+
+.verify-alarm p + p {
+  margin-top: var(--space-1);
+}
+
+/* result areas */
+
+.verify-docresult {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.verify-offline-tag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-0);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-md);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.verify-details {
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.verify-filechecks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.verify-doclink {
+  margin: 0;
+}
+
+.verify-verdict {
+  min-height: 1.5rem;
+}
+
+.verify-details-toggle {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.verify-details-toggle > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-size);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.verify-details-toggle[open] > summary {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.verify-details-toggle > :not(summary) {
+  margin: var(--space-2);
+}
+
+/* audit */
+
+.verify-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+}
+
+.verify-progress__bar {
+  width: 100%;
+  height: 0.75rem;
+  accent-color: var(--color-accent);
+}
+
+.verify-audit-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.verify-problems li {
+  overflow-wrap: anywhere;
+}
+
+.verify-limits {
+  max-width: var(--reading-width);
+}
+
+@media (min-width: 40rem) {
+  .verify-section {
+    padding: var(--space-4);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .verify-progress__bar {
+    transition: none;
+  }
+}
