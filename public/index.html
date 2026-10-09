@@ -7,33 +7,69 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main>
-    <h1>hrdlock</h1>
-    <p class="sub">Lock a file, store it, unlock it later with the password.</p>
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3H9zm3 4a2 2 0 0 1 1 3.73V19h-2v-1.27A2 2 0 0 1 12 14z"/>
+      </svg>
+      <span>hrdlock</span>
+    </div>
+    <p class="tag">Lock a file in your browser, store it, open it later with the password.</p>
+  </header>
 
-    <section>
+  <div id="warn" class="banner" hidden>
+    Locking needs a secure page. Open this site from http://127.0.0.1:3000 or put it behind https.
+  </div>
+
+  <main class="grid">
+    <section class="card">
       <h2>Lock a file</h2>
-      <input type="file" id="pick">
-      <button id="lockBtn">Lock and upload</button>
-      <p id="lockStatus" class="status"></p>
-      <div id="result" hidden>
-        <p>Your password. It is shown once. If you lose it the file cannot be opened again.</p>
-        <div class="pw">
-          <code id="pw"></code>
-          <button id="copyBtn">Copy</button>
+
+      <input type="file" id="pick" class="sr">
+      <label for="pick" id="drop" class="drop">
+        <svg class="up" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L7 9m5-5l5 5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3"/>
+        </svg>
+        <span class="big">Drop a file here or click to choose</span>
+        <span class="small">Up to 50 MB</span>
+        <span id="chosen" class="chosen"></span>
+      </label>
+
+      <button id="lockBtn" class="btn primary wide">Lock and upload</button>
+      <p id="lockStatus" class="status" role="status"></p>
+
+      <div id="result" class="result" hidden>
+        <h3>Your password</h3>
+        <p class="small">It is shown only once. Without it the file cannot be opened again.</p>
+        <code id="pw" class="pw"></code>
+        <div class="btns">
+          <button id="copyBtn" class="btn">Copy</button>
+          <button id="saveBtn" class="btn ghost">Save as text file</button>
         </div>
         <p id="storedAs" class="small"></p>
       </div>
+
+      <ol class="steps">
+        <li>The page makes a random password.</li>
+        <li>Your file is locked right here in the browser.</li>
+        <li>Only the locked copy goes to the server.</li>
+      </ol>
     </section>
 
-    <section>
-      <h2>Stored files</h2>
-      <p id="listStatus" class="status"></p>
-      <ul id="files"></ul>
+    <section class="card">
+      <div class="vhead">
+        <h2>Stored files <span id="count" class="pill">0</span></h2>
+        <input type="search" id="search" placeholder="Search" aria-label="Search files">
+      </div>
+      <p id="listStatus" class="status" role="status"></p>
+      <ul id="files" class="files"></ul>
     </section>
-
-    <p class="small">The file is locked inside your browser before it is sent. The server never gets the password or the real file.</p>
   </main>
+
+  <footer class="foot">
+    The server never gets your password or your real file. Anyone who can open this site can see the list of file names and download the locked copies, but they cannot open them without the password.
+  </footer>
+
   <script src="hrdcipher.js"></script>
   <script src="app.js"></script>
 </body>
