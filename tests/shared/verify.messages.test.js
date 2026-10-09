@@ -209,7 +209,7 @@ describe('tampered messages', () => {
   });
   it('detects a changed stated message hash', async () => {
     const page = await build();
-    page.messages[1].hash = 'f'.repeat(64);
+    page.messages[1].record.body = 'changed after signing';
     const res = await verifyMessages(page);
     expect(res.results[1].ok).toBe(false);
     expect(res.results[1].detail).toMatch(/hash/);
@@ -229,6 +229,22 @@ describe('tampered messages', () => {
     const res = await verifyMessages(page);
     expect(res.chainOk).toBe(false);
     expect(res.ok).toBe(false);
+  });
+  it('a broken link replaces the success text and never glues failure onto it', async () => {
+    const page = await build();
+    page.messages.splice(2, 1);
+    const res = await verifyMessages(page);
+    const broken = res.results.find((r) => r.seq === 4);
+    expect(broken.ok).toBe(false);
+    expect(broken.detail).toMatch(/^chain link is broken/);
+    expect(broken.detail).not.toMatch(/verify\s*chain/);
+    expect(broken.detail).not.toMatch(/message hash verify/);
+  });
+  it('a broken link on a message with another problem joins the two with a separator', async () => {
+    const page = await build();
+    page.messages[1].record.body = 'changed after signing';
+    const res = await verifyMessages(page);
+    expect(res.results[1].detail).toMatch(/; chain link is broken$/);
   });
   it('detects reordered messages', async () => {
     const page = await build();

@@ -655,7 +655,11 @@ export async function verifyMessages(page, options = {}) {
       if (!linkOk || problems.includes('the same signed message appears more than once')) {
         chainOk = false;
         results[results.length - 1].ok = false;
-        if (!linkOk) results[results.length - 1].detail += (problems.length ? '; ' : '') + 'chain link is broken';
+        if (!linkOk) {
+          // Replace the success text instead of gluing a failure onto it.
+          const last = results[results.length - 1];
+          last.detail = problems.length ? last.detail + '; chain link is broken' : 'chain link is broken (a message before this one may be missing or changed)';
+        }
       }
       prev = Number.isSafeInteger(m.seq) && isHash(m.chainHash) ? { seq: m.seq, chainHash: m.chainHash } : null;
       if (Number.isSafeInteger(m.seq) && isHash(m.chainHash)) {
