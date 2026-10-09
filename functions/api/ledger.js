@@ -1,13 +1,17 @@
-// GET /api/ledger?after=<seq>&limit=<1..500>: the public ledger of document records, in order.
+// GET /api/ledger?after=<seq>&limit=<1..200>: the public ledger of document records, in order.
+// Every record of every document is in it, listed or not. That is what lets anyone audit the chain.
 import { ledgerHeadFromRow } from '../_lib/documents.js';
-import { intParam, json, onlyMethods } from '../_lib/http.js';
+import { headOf, intParam, json, onlyMethods } from '../_lib/http.js';
 import { identityMapFromRows } from '../_lib/identities.js';
 import { loadServerKey, serverInfo, signScope } from '../_lib/serverKey.js';
+
+// A page of 500 entries is about half a megabyte of JSON, too much work for one request on a small plan.
+const MAX_LEDGER_PAGE = 200;
 
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const after = intParam(url, 'after', { min: 0, max: Number.MAX_SAFE_INTEGER, def: 0 });
-  const limit = intParam(url, 'limit', { min: 1, max: 500, def: 200 });
+  const limit = intParam(url, 'limit', { min: 1, max: MAX_LEDGER_PAGE, def: 200 });
 
   // One more row than asked for tells whether there is another page.
   const [entryRes, headRes] = await env.DB.batch([
@@ -54,4 +58,5 @@ export async function onRequestGet({ request, env }) {
   });
 }
 
+export const onRequestHead = headOf(onRequestGet);
 export const onRequest = onlyMethods('GET');

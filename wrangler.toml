@@ -1,8 +1,11 @@
+# Deploy steps, the server key and the limits are written down in scripts/DEPLOY.md.
+# The signing key is a secret (SERVER_SIGNING_JWK), it never goes in this file.
 name = "hrdlock"
 pages_build_output_dir = "./dist"
 compatibility_date = "2025-09-01"
 
 # Fill in the real id after running: wrangler d1 create hrdlock
+# Then apply the schema: wrangler d1 migrations apply DB --remote  (every file in migrations/, in order)
 [[d1_databases]]
 binding = "DB"
 database_name = "hrdlock"

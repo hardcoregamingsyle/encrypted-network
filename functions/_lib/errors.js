@@ -13,7 +13,8 @@ export const STATUS_BY_CODE = Object.freeze({
   too_large: 413,
   expired: 400,
   forbidden: 403,
-  server_error: 500
+  server_error: 500,
+  busy: 503
 });
 
 export class ApiError extends Error {
@@ -29,6 +30,9 @@ export class ApiError extends Error {
 
 export const badRequest = (message) => new ApiError('bad_request', message);
 export const notFound = (message = 'not found') => new ApiError('not_found', message);
+// The server could not take the write because other writers kept winning. Nothing was changed, try again.
+export const busy = (message = 'the server is busy, try again') =>
+  new ApiError('busy', message, { headers: { 'Retry-After': 1 } });
 
 // Body for an error response.
 export function errorBody(err) {

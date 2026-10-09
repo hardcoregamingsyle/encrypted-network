@@ -3,7 +3,7 @@ import { canonicalize } from '../../../shared/canonical.js';
 import { keyIdOf, normalizePublicJwk, verifyRecord } from '../../../shared/keys.js';
 import { LIMITS, validateRecord } from '../../../shared/records.js';
 import { ApiError, badRequest } from '../../_lib/errors.js';
-import { clientIp, json, onlyMethods, readSignedBody } from '../../_lib/http.js';
+import { json, onlyMethods, rateKeyForRequest, readSignedBody } from '../../_lib/http.js';
 import { loadIdentity } from '../../_lib/identities.js';
 import { consumeRate } from '../../_lib/rate.js';
 import { assertFresh } from '../../_lib/time.js';
@@ -30,7 +30,9 @@ export async function onRequestPost({ request, env }) {
 
   const now = Date.now();
   assertFresh(record.createdAt, LIMITS.RECORD_TIME_WINDOW_MS, now, 'identity');
-  await consumeRate(env, 'identity', clientIp(request), now);
+  // Limited per address (an IPv6 /64 counts as one address) and then for the whole service.
+  await consumeRate(env, 'identity', rateKeyForRequest(request), now);
+  await consumeRate(env, 'identityAll', 'all', now);
 
   const result = await env.DB.prepare(
     'INSERT INTO identities (key_id, public_jwk, display_name, created_at, record, signature) ' +

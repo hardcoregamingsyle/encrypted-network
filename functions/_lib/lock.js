@@ -24,7 +24,18 @@ export async function withLock(key, fn, { maxWaitMs = 8000, staleMs = 15000 } = 
   }
 }
 
-// Wait a short random time before a retry, longer each time.
+// How long a writer keeps trying when other writers (maybe in other isolates, which this lock
+// cannot see) keep winning the race for the head of a chain. After this the caller answers 503 busy.
+export const RETRY_BUDGET_MS = 8000;
+
+// Wait a random time before a retry. The window doubles each time (full jitter) up to half a second,
+// so a crowd of writers spreads out instead of colliding again.
 export function backoff(attempt) {
-  return sleep(Math.floor(Math.random() * 15 * (attempt + 1)));
+  const window = Math.min(500, 10 * 2 ** Math.min(attempt, 6));
+  return sleep(Math.floor(Math.random() * window));
+}
+
+// True while a writer that started at startedAt may still retry.
+export function canRetry(startedAt, budgetMs = RETRY_BUDGET_MS) {
+  return Date.now() - startedAt < budgetMs;
 }

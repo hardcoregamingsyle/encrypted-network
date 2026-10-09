@@ -2,7 +2,7 @@
 import { isDocId } from '../../../../shared/records.js';
 import { badRequest } from '../../../_lib/errors.js';
 import { docSummary, readDocument } from '../../../_lib/documents.js';
-import { json, onlyMethods } from '../../../_lib/http.js';
+import { headOf, json, onlyMethods } from '../../../_lib/http.js';
 import { loadServerKey, serverInfo, signDocHead, signScope } from '../../../_lib/serverKey.js';
 
 export async function onRequestGet({ env, params }) {
@@ -25,4 +25,5 @@ export async function onRequestGet({ env, params }) {
   });
 }
 
+export const onRequestHead = headOf(onRequestGet);
 export const onRequest = onlyMethods('GET');

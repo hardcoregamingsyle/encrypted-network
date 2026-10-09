@@ -1087,6 +1087,116 @@ async function main() {
     assert(!preflight.headers.get('access-control-allow-origin'), 'no CORS on preflight');
   });
 
+  // ---- review fixes ----
+  await check('health says whether signing is on, and HEAD works on JSON routes', async () => {
+    const res = await call('GET', '/api/health');
+    eq(res.json.signing, true, 'signing');
+    for (const path of ['/api/health', '/api/server-key', '/api/ledger?limit=1', '/api/documents?limit=1', '/api/channels', '/api/documents/' + doc.docId]) {
+      const head = await call('HEAD', path);
+      eq(head.status, 200, 'HEAD ' + path);
+      eq(head.bytes.length, 0, 'HEAD body ' + path);
+      eq(head.headers.get('cache-control'), 'no-store', 'HEAD cache-control ' + path);
+    }
+  });
+
+  await check('document search works for the longest allowed query, with percent signs and emoji', async () => {
+    const owner = await newPerson('Search');
+    const label = ('findme ' + RUN + ' ' + 'long label '.repeat(12)).slice(0, 120);
+    const made = await publishNew(owner, 'search me', { label });
+    for (const q of [label, label.toUpperCase(), 'q'.repeat(60), '%'.repeat(100), '\u{1F600}'.repeat(25)]) {
+      const res = await call('GET', '/api/documents?limit=100&q=' + encodeURIComponent(q));
+      expectStatus(res, 200);
+      eq(res.json.documents.some((d) => d.docId === made.docId), q === label || q === label.toUpperCase(), 'found by ' + q.slice(0, 12));
+    }
+    expectStatus(await call('GET', '/api/documents?q=' + encodeURIComponent('a'.repeat(121))), 400);
+  });
+
+  await check('document list paging reaches documents that share one updatedAt', async () => {
+    const owner = await newPerson('Ties');
+    const T = Date.now() - 30000;
+    const ids = [];
+    for (let i = 0; i < 4; i++) {
+      const locked = await lock('tie ' + i + RUN, generatePassword());
+      expectStatus(await putBlob(owner, locked.bytes), 201);
+      const docId = (['00', 'ff', 'fe', 'fd'][i]) + newDocId().slice(2);
+      expectStatus(await postDoc(owner, createRecord(owner, locked, { docId, createdAt: T, label: 'tie ' + RUN })), 201);
+      ids.push(docId);
+    }
+    const seen = [];
+    let qs = '?limit=1&owner=' + owner.keyId;
+    for (let page = 0; page < 10; page++) {
+      const res = await call('GET', '/api/documents' + qs);
+      expectStatus(res, 200);
+      if (res.json.documents.length === 0) break;
+      const last = res.json.documents[res.json.documents.length - 1];
+      seen.push(last.docId);
+      qs = `?limit=1&owner=${owner.keyId}&before=${last.updatedAt}&beforeId=${last.docId}`;
+    }
+    eq(seen.slice().sort().join(), ids.slice().sort().join(), 'documents reached by paging');
+  });
+
+  await check('the ledger page size is capped at 200', async () => {
+    expectStatus(await call('GET', '/api/ledger?limit=200'), 200);
+    expectStatus(await call('GET', '/api/ledger?limit=201'), 400, 'bad_request');
+  });
+
+  await check('a channel may only name a document that exists, and shows the document owner', async () => {
+    const owner = await newPerson('ChanDocOwner');
+    const other = await newPerson('ChanDocOther');
+    const made = await publishNew(owner, 'channel doc ' + RUN);
+    expectStatus(await createChannel(other, 'ghost-' + RUN, 'Ghost link', newDocId()), 400, 'bad_request');
+    const ours = await createChannel(owner, 'own-' + RUN, 'Own link', made.docId);
+    expectStatus(ours, 201);
+    eq(ours.json.channel.docOwnerKeyId, owner.keyId, 'docOwnerKeyId');
+    const theirs = await createChannel(other, 'their-' + RUN, 'Other link', made.docId);
+    expectStatus(theirs, 201);
+    eq(theirs.json.channel.docOwnerKeyId, owner.keyId, 'docOwnerKeyId of a channel by someone else');
+    assert(theirs.json.channel.createdBy !== theirs.json.channel.docOwnerKeyId, 'creator is not the owner');
+  });
+
+  await check('channel list pages with a cursor and counts messages without scanning them', async () => {
+    const person = await newPerson('Counter');
+    const id = 'cnt-' + RUN;
+    expectStatus(await createChannel(person, id, 'Counter channel'), 201);
+    for (let i = 0; i < 3; i++) expectStatus((await postMessage(person, id, 'count ' + i)).res, 201);
+    const list = await call('GET', '/api/channels?limit=200');
+    expectStatus(list, 200);
+    const mine = list.json.channels.find((c) => c.channelId === id);
+    assert(mine, 'channel listed');
+    eq(mine.messageCount, 3, 'messageCount');
+    assert(Number.isInteger(mine.lastMessageAt), 'lastMessageAt');
+    const page = await call('GET', '/api/channels?limit=1');
+    eq(page.json.channels.length, 1, 'one channel');
+    assert(page.json.next && Number.isInteger(page.json.next.before) && typeof page.json.next.beforeId === 'string', 'next cursor');
+    const second = await call('GET', `/api/channels?limit=1&before=${page.json.next.before}&beforeId=${page.json.next.beforeId}`);
+    expectStatus(second, 200);
+    assert(second.json.channels[0].channelId !== page.json.channels[0].channelId, 'second page differs');
+    const msgs = await call('GET', `/api/channels/${id}/messages?tail=2`);
+    eq(msgs.json.channel.messageCount, 3, 'messageCount in a message page');
+  });
+
+  await check('blobs: only locked file headers are stored, and uploads need a locked file size', async () => {
+    const owner = await newPerson('Headers');
+    const plain = new TextEncoder().encode('plain text, not a locked file. '.repeat(20));
+    const refused = await putBlob(owner, plain);
+    expectStatus(refused, 400, 'bad_request');
+    eq((await call('GET', '/api/blobs/' + (await sha256Hex(plain)))).status, 404, 'nothing stored');
+    const locked = await lock('header ok ' + RUN, generatePassword());
+    expectStatus(await putBlob(owner, locked.bytes), 201);
+  });
+
+  await check('identity creation counts an IPv6 /64 as one address', async () => {
+    const prefix = `2001:db8:${RUN.slice(0, 4)}:${RUN.slice(4, 8)}`;
+    const codes = [];
+    for (let i = 0; i < 12; i++) {
+      const id = await makeIdentity('V6 ' + i + ' ' + RUN);
+      const res = await call('POST', '/api/identities', { json: { record: id.identityRecord, signature: id.identitySignature }, ip: `${prefix}::${i + 1}` });
+      codes.push(res.status);
+    }
+    eq(codes.filter((c) => c === 201).length, 10, 'accepted: ' + codes.join());
+    eq(codes[10], 429, 'eleventh');
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
 }

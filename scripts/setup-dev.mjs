@@ -1,9 +1,16 @@
 // Local setup.
 //   node scripts/setup-dev.mjs [--persist-to <dir>]   make .dev.vars (if needed) and apply local migrations
-//   node scripts/setup-dev.mjs --print-production-key  print a fresh private key JSON (stdout only)
+//   node scripts/setup-dev.mjs --write-production-key <file>   make a production signing key and save it to <file>
+//   node scripts/setup-dev.mjs --print-production-key          print a fresh private key JSON (stdout only)
 //
-// For production keep the printed key out of files and set it as a secret:
-//   node scripts/setup-dev.mjs --print-production-key | npx wrangler pages secret put SERVER_SIGNING_JWK
+// The server signing key can not be read back once it is stored as a Cloudflare secret, and a new key
+// has a new key id, which breaks every verifier that pinned the old one. So make the key once, into a
+// file, keep that file offline (a password manager, an encrypted drive), and only then store the secret:
+//   node scripts/setup-dev.mjs --write-production-key server-key.json
+//   npx wrangler pages secret put SERVER_SIGNING_JWK --project-name <project> < server-key.json
+//   node scripts/check-deploy.mjs https://<site> --key-id <the id printed above>
+// Do the secret for the Preview environment too if you use preview deployments (secrets are per
+// environment). Do not commit the file. Piping --print-production-key straight into wrangler leaves no copy.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -20,12 +27,15 @@ async function freshPrivateJwk() {
 }
 
 function parseArgs(argv) {
-  const out = { persistTo: null, printKey: false, noMigrate: false };
+  const out = { persistTo: null, printKey: false, keyFile: null, noMigrate: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--persist-to') {
       out.persistTo = argv[++i];
       if (!out.persistTo) throw new Error('--persist-to needs a directory');
+    } else if (a === '--write-production-key') {
+      out.keyFile = argv[++i];
+      if (!out.keyFile) throw new Error('--write-production-key needs a file name');
     } else if (a === '--print-production-key') {
       out.printKey = true;
     } else if (a === '--no-migrate') {
@@ -78,7 +88,24 @@ function applyMigrations(persistTo) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
+  if (opts.keyFile) {
+    // wx: fail when the file exists, so an old key is never overwritten by accident. mode 600: owner only.
+    const jwk = await freshPrivateJwk();
+    try {
+      writeFileSync(resolve(opts.keyFile), JSON.stringify(jwk) + '\n', { flag: 'wx', mode: 0o600 });
+    } catch (err) {
+      if (err && err.code === 'EEXIST') throw new Error(opts.keyFile + ' already exists, it was not changed');
+      throw err;
+    }
+    const keyId = await keyIdOf(publicJwkFromPrivate(jwk));
+    console.log('wrote the private key to ' + opts.keyFile);
+    console.log('server key id: ' + keyId);
+    console.log('Keep a copy of the file somewhere safe and offline. It is the only copy: stored secrets can not be read back.');
+    console.log('Next: npx wrangler pages secret put SERVER_SIGNING_JWK --project-name <project> < ' + opts.keyFile);
+    return;
+  }
   if (opts.printKey) {
+    console.error('note: this prints the private key and keeps no copy. Use --write-production-key <file> to keep one.');
     process.stdout.write(JSON.stringify(await freshPrivateJwk()) + '\n');
     return;
   }

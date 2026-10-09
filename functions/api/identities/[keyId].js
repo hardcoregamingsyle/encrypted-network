@@ -1,7 +1,7 @@
 // GET /api/identities/:keyId
 import { isHash } from '../../../shared/records.js';
 import { badRequest, notFound } from '../../_lib/errors.js';
-import { json, onlyMethods } from '../../_lib/http.js';
+import { headOf, json, onlyMethods } from '../../_lib/http.js';
 import { loadIdentity } from '../../_lib/identities.js';
 
 export async function onRequestGet({ env, params }) {
@@ -12,4 +12,5 @@ export async function onRequestGet({ env, params }) {
   return json(identity);
 }
 
+export const onRequestHead = headOf(onRequestGet);
 export const onRequest = onlyMethods('GET');

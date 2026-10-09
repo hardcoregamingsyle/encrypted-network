@@ -2,11 +2,14 @@
 import { canonicalize } from '../../shared/canonical.js';
 import { chainHash, recordHash } from '../../shared/records.js';
 import { ZERO_HASH } from '../../shared/encoding.js';
-import { ApiError, badRequest, isUniqueConflict, notFound } from './errors.js';
+import { ApiError, badRequest, busy, isUniqueConflict, notFound } from './errors.js';
 import { identityMapFromRows } from './identities.js';
-import { backoff, withLock } from './lock.js';
+import { RETRY_BUDGET_MS, backoff, canRetry, withLock } from './lock.js';
 
-export const MAX_ATTEMPTS = 5;
+// A document may hold at most this many records (versions plus a final revoke). The whole chain is
+// returned by one request and checked in one pass, so it has to stay bounded. The last slot is kept
+// for doc.revoke, so an owner can always withdraw a document that has used up its versions.
+export const MAX_DOC_VERSIONS = 200;
 
 // documents row to the "document" object of bundles and write responses.
 export function docSummary(row) {
@@ -48,12 +51,19 @@ export async function checkChainRules(env, record, doc) {
   if (record.prev !== doc.head_record_hash) {
     throw new ApiError('conflict', 'prev is not the current head record, reload the document and sign again');
   }
+  if (record.type === 'doc.update' && record.version >= MAX_DOC_VERSIONS) {
+    throw new ApiError(
+      'conflict',
+      `a document can have at most ${MAX_DOC_VERSIONS - 1} versions, the last place is kept for revoking`
+    );
+  }
   if (record.createdAt < doc.updated_at) throw badRequest('createdAt is earlier than the previous version');
   if (record.type === 'doc.update') await requireBlob(env, record.blob);
 }
 
 async function requireBlob(env, blob) {
-  const row = await env.DB.prepare('SELECT size FROM blobs WHERE hash = ?').bind(blob.hash).first();
+  // A reserved row (pending = 1) is an upload that has not finished, it does not count.
+  const row = await env.DB.prepare('SELECT size FROM blobs WHERE hash = ? AND pending = 0').bind(blob.hash).first();
   if (!row) throw badRequest('the locked file has not been uploaded, upload it first');
   if (row.size !== blob.size) throw badRequest('blob size does not match the uploaded file');
 }
@@ -100,10 +110,11 @@ function writeStatements(env, record, signature, hash, head, ledgerHash, now) {
 
 // Checks the chain rules and writes the record with one D1 batch. If another writer got there
 // first, the UNIQUE columns make the batch fail as a whole, and this recomputes and tries again.
-export async function appendDocRecord(env, record, signature) {
+export async function appendDocRecord(env, record, signature, { budgetMs = RETRY_BUDGET_MS } = {}) {
   const hash = await recordHash(record);
   return withLock('ledger', async () => {
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const startedAt = Date.now();
+    for (let attempt = 0; ; attempt++) {
       const [docRow, headRow] = await env.DB.batch([
         env.DB.prepare('SELECT * FROM documents WHERE doc_id = ?').bind(record.docId),
         env.DB.prepare('SELECT seq, ledger_hash FROM ledger ORDER BY seq DESC LIMIT 1')
@@ -117,6 +128,7 @@ export async function appendDocRecord(env, record, signature) {
         await env.DB.batch(writeStatements(env, record, signature, hash, head, ledgerHash, now));
       } catch (err) {
         if (!isUniqueConflict(err)) throw err;
+        if (!canRetry(startedAt, budgetMs)) throw busy();
         await backoff(attempt);
         continue;
       }
@@ -131,7 +143,6 @@ export async function appendDocRecord(env, record, signature) {
         document: docSummary(docRes.results[0])
       };
     }
-    throw new ApiError('conflict', 'the server is busy, try again');
   });
 }
 
@@ -142,7 +153,7 @@ export async function readDocument(env, docId) {
     env.DB
       .prepare(
         'SELECT r.record_hash, r.body, r.signature, r.ledger_seq, l.ledger_hash, l.prev_ledger_hash ' +
-          'FROM records r JOIN ledger l ON l.seq = r.ledger_seq WHERE r.doc_id = ? ORDER BY r.version ASC'
+          'FROM records r JOIN ledger l ON l.seq = r.ledger_seq WHERE r.doc_id = ? ORDER BY r.version ASC LIMIT ' + MAX_DOC_VERSIONS
       )
       .bind(docId),
     env.DB

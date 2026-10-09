@@ -18,6 +18,9 @@ export function retryAfterSeconds(now, windowMs) {
 // Named limits: bucket prefix, window length and maximum count.
 export const RATES = Object.freeze({
   identity: { prefix: 'ident-ip', windowMs: HOUR, max: LIMITS.RATE.IDENTITY_PER_HOUR_PER_IP, what: 'identities created from this address' },
+  // One bucket for the whole service. Every other limit is per identity and identities are free, so this
+  // is the ceiling on how fast new ones can appear. It is checked after the per address limit.
+  identityAll: { prefix: 'ident-all', windowMs: HOUR, max: 500, what: 'identities created on this service' },
   message: { prefix: 'msg', windowMs: MINUTE, max: LIMITS.RATE.MESSAGES_PER_MINUTE_PER_SIGNER, what: 'messages' },
   docRecord: { prefix: 'doc', windowMs: HOUR, max: LIMITS.RATE.DOC_RECORDS_PER_HOUR_PER_SIGNER, what: 'document records' },
   channel: { prefix: 'chan', windowMs: HOUR, max: LIMITS.RATE.CHANNELS_PER_HOUR_PER_SIGNER, what: 'channels' },

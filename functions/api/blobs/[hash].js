@@ -4,12 +4,11 @@
 //   HEAD /api/blobs/:hash
 import { LIMITS, isHash, validateRecord } from '../../../shared/records.js';
 import { ApiError, badRequest, notFound } from '../../_lib/errors.js';
+import { blobKey, storeBlob } from '../../_lib/blobs.js';
 import { json, onlyMethods } from '../../_lib/http.js';
 import { requireSigner } from '../../_lib/identities.js';
 import { consumeRate } from '../../_lib/rate.js';
 import { assertFresh } from '../../_lib/time.js';
-
-const blobKey = (hash) => 'blobs/' + hash;
 
 function hashParam(params) {
   const hash = params.hash;
@@ -49,51 +48,8 @@ export async function onRequestPut({ request, env, params }) {
   await requireSigner(env, record, signature);
   await consumeRate(env, 'blob', record.signer, now);
 
-  // Already stored: nothing to write, but the size must agree with what is stored.
-  const known = await env.DB.prepare('SELECT size FROM blobs WHERE hash = ?').bind(hash).first();
-  if (known) {
-    if (known.size !== size) throw badRequest('a file with this hash is stored with a different size');
-    return json({ exists: true, hash });
-  }
-  const stored = await env.FILES.head(blobKey(hash));
-  if (stored) {
-    // The object is there but its row is missing (an earlier upload stopped half way). Repair the row.
-    if (stored.size !== size) throw badRequest('a file with this hash is stored with a different size');
-    await env.DB.prepare('INSERT OR IGNORE INTO blobs (hash, size, uploader, created_at) VALUES (?, ?, ?, ?)')
-      .bind(hash, size, record.signer, now)
-      .run();
-    return json({ exists: true, hash });
-  }
-
-  const used = await env.DB.prepare('SELECT COALESCE(SUM(size), 0) AS used FROM blobs WHERE uploader = ?')
-    .bind(record.signer)
-    .first();
-  if ((used ? used.used : 0) + size > LIMITS.SIGNER_BLOB_QUOTA_BYTES) {
-    throw new ApiError('too_large', 'the upload quota for this identity is used up');
-  }
-
-  let object;
-  try {
-    // R2 checks the sha256 itself while it stores the bytes.
-    object = await env.FILES.put(blobKey(hash), request.body, { sha256: hash });
-  } catch (err) {
-    const text = String((err && err.message) || err);
-    if (/checksum|\(10037\)|sha-?256|digest/i.test(text)) {
-      throw badRequest('the file bytes do not match the hash');
-    }
-    throw err;
-  }
-  if (!object || object.size !== size) {
-    try {
-      await env.FILES.delete(blobKey(hash));
-    } catch {
-      // nothing more to do
-    }
-    throw badRequest('the file size does not match the content length');
-  }
-  await env.DB.prepare('INSERT OR IGNORE INTO blobs (hash, size, uploader, created_at) VALUES (?, ?, ?, ?)')
-    .bind(hash, size, record.signer, now)
-    .run();
+  const result = await storeBlob(env, { body: request.body, hash, size, signer: record.signer, now });
+  if (result.exists) return json({ exists: true, hash });
   return json({ hash, size }, 201);
 }
 

@@ -3,7 +3,7 @@
 import { LIMITS, isChannelId, validateRecord } from '../../../../shared/records.js';
 import { appendMessage, channelFromRow, CHANNEL_SELECT, loadChannel, messageFromRow, requireChannel } from '../../../_lib/channels.js';
 import { badRequest } from '../../../_lib/errors.js';
-import { intParam, json, onlyMethods, readSignedBody } from '../../../_lib/http.js';
+import { headOf, intParam, json, onlyMethods, readSignedBody } from '../../../_lib/http.js';
 import { identityMapFromRows, requireSigner } from '../../../_lib/identities.js';
 import { consumeRate } from '../../../_lib/rate.js';
 import { loadServerKey, serverInfo, signScope } from '../../../_lib/serverKey.js';
@@ -72,6 +72,8 @@ export async function onRequestGet({ request, env, params }) {
     hasMore
   });
 }
+
+export const onRequestHead = headOf(onRequestGet);
 
 export async function onRequestPost({ request, env, params }) {
   const channelId = channelParam(params);
