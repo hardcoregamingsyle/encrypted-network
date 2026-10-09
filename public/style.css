@@ -1,0 +1,96 @@
+:root {
+  --bg: #f4f5f7;
+  --card: #ffffff;
+  --text: #1d2330;
+  --muted: #5d6677;
+  --line: #d9dde5;
+  --accent: #2f5bd6;
+  --bad: #b3261e;
+  --good: #1f7a3d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d;
+    --card: #1d222b;
+    --text: #e8ebf0;
+    --muted: #9aa3b2;
+    --line: #333a47;
+    --accent: #6f93ff;
+    --bad: #ff8a80;
+    --good: #6fd08c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 { margin: 0; font-size: 28px; }
+h2 { margin: 0 0 12px; font-size: 18px; }
+.sub { color: var(--muted); margin: 4px 0 24px; }
+
+section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+button {
+  font: inherit;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.plain { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+
+input[type="file"], input[type="text"] { font: inherit; max-width: 100%; }
+input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.status { min-height: 1.5em; margin: 8px 0 0; color: var(--muted); }
+.status.bad { color: var(--bad); }
+.status.good { color: var(--good); }
+.small { font-size: 13px; color: var(--muted); }
+
+.pw { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pw code {
+  font-size: 18px;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  word-break: break-all;
+}
+
+ul { list-style: none; margin: 0; padding: 0; }
+li { padding: 10px 0; border-top: 1px solid var(--line); }
+li:first-child { border-top: 0; }
+.row { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.name { word-break: break-all; }
+.meta { font-size: 13px; color: var(--muted); }
+.unlock { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

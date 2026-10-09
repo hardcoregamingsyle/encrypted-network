@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>hrdlock</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <h1>hrdlock</h1>
+    <p class="sub">Lock a file, store it, unlock it later with the password.</p>
+
+    <section>
+      <h2>Lock a file</h2>
+      <input type="file" id="pick">
+      <button id="lockBtn">Lock and upload</button>
+      <p id="lockStatus" class="status"></p>
+      <div id="result" hidden>
+        <p>Your password. It is shown once. If you lose it the file cannot be opened again.</p>
+        <div class="pw">
+          <code id="pw"></code>
+          <button id="copyBtn">Copy</button>
+        </div>
+        <p id="storedAs" class="small"></p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Stored files</h2>
+      <p id="listStatus" class="status"></p>
+      <ul id="files"></ul>
+    </section>
+
+    <p class="small">The file is locked inside your browser before it is sent. The server never gets the password or the real file.</p>
+  </main>
+  <script src="hrdcipher.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
