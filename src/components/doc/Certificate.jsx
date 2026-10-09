@@ -1,5 +1,10 @@
-import { formatTime } from '../../lib/format.js';
+import { formatTime, formatUtc } from '../../lib/format.js';
 import { certificateData } from './docLogic.js';
+
+// A time with the local zone and the same moment in UTC.
+function when(ms) {
+  return `${formatTime(ms)} (${formatUtc(ms)})`;
+}
 
 function Row({ label, children }) {
   return (
@@ -15,7 +20,7 @@ export default function Certificate({ bundle, verification, pinnedServerKeyId, c
   const c = certificateData({ bundle, verification, pinnedServerKeyId, now: checkedAt });
   return (
     <section className="doc-cert" aria-hidden="true" data-testid="doc-cert">
-      <h1 className="doc-cert__title">Document verification certificate</h1>
+      <h1 className="doc-cert__title">Document verification report</h1>
       <p className={`doc-cert__result ${c.ok ? 'is-ok' : 'is-bad'}`}>{c.resultText}</p>
       <dl className="doc-cert__list">
         <Row label="Document id">{c.docId}</Row>
@@ -29,25 +34,31 @@ export default function Certificate({ bundle, verification, pinnedServerKeyId, c
         <Row label="Locked file hash">{c.headBlobHash || 'none'}</Row>
         <Row label="Signer">{c.signerName || 'unknown name'}</Row>
         <Row label="Signer key id">{c.signerKeyId || 'unknown'}</Row>
-        <Row label="Signed at (signer clock)">{c.signedAt ? formatTime(c.signedAt) : 'unknown'}</Row>
+        <Row label="Signed at (signer clock)">{c.signedAt ? when(c.signedAt) : 'unknown'}</Row>
         <Row label="Server key id">{c.serverKeyId || 'none'}</Row>
         <Row label="Server key pinned">
-          {c.pinnedServerKeyId ? (c.pinned ? 'yes, and it matches' : 'yes, but it does not match') : 'no'}
+          {c.pinnedServerKeyId
+            ? c.pinned
+              ? 'yes, and the checkpoint was checked against it'
+              : c.pinMismatch
+                ? 'yes, but the server key does not match it'
+                : 'yes, but the check did not pass, so it is not confirmed'
+            : 'no'}
         </Row>
         {c.ledgerCheckpoint ? (
           <Row label="Ledger checkpoint">
-            number {c.ledgerCheckpoint.seq}, hash {c.ledgerCheckpoint.hash}, signed {formatTime(c.ledgerCheckpoint.signedAt)}
+            number {c.ledgerCheckpoint.seq}, hash {c.ledgerCheckpoint.hash}, signed {when(c.ledgerCheckpoint.signedAt)}
           </Row>
         ) : (
           <Row label="Ledger checkpoint">none</Row>
         )}
         {c.headCheckpoint ? (
           <Row label="Document checkpoint">
-            version {c.headCheckpoint.seq}, hash {c.headCheckpoint.hash}, signed {formatTime(c.headCheckpoint.signedAt)}
+            version {c.headCheckpoint.seq}, hash {c.headCheckpoint.hash}, signed {when(c.headCheckpoint.signedAt)}
           </Row>
         ) : null}
         <Row label="Tied to the server head">{c.anchored ? 'yes' : 'no'}</Row>
-        <Row label="Checked on">{formatTime(c.checkedAt)}</Row>
+        <Row label="Checked on">{when(c.checkedAt)}</Row>
       </dl>
       {c.failed.length > 0 ? (
         <div className="doc-cert__block">

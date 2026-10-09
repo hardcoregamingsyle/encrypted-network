@@ -8,7 +8,7 @@ import Spinner from '../Spinner.jsx';
 import { getBlob } from '../../lib/api.js';
 import { unlockInWorker } from '../../lib/cipherClient.js';
 import { formatBytes } from '../../lib/format.js';
-import { normalizePassword } from '../../lib/lockfile.js';
+import { tidyPassword } from '../doc/docLogic.js';
 import { openDocument } from '../../lib/publish.js';
 import { verifyBlobBytes, verifyPlaintext } from '../../../shared/verify.js';
 import DocResult from './DocResult.jsx';
@@ -136,7 +136,7 @@ export default function FileSection({ pinned }) {
       setDocError(p.error);
       return;
     }
-    const used = normalizePassword(docPassword) || p.password;
+    const used = tidyPassword(docPassword) || p.password;
     if (!used) {
       setDocError('Enter the document password. Without it the stored file cannot be opened for comparison.');
       return;

@@ -10,6 +10,11 @@ export class ApiError extends Error {
   }
 }
 
+// Largest locked file the server may hold: 50 MiB of file plus the lock header and tag.
+export const MAX_BLOB_BYTES = 52428800 + 4096;
+// Largest JSON answer read from the server. A hostile server cannot make the tab read without end.
+export const MAX_JSON_BYTES = 8 * 1024 * 1024;
+
 const NETWORK_MESSAGE = 'Could not reach the server. Check your connection and try again.';
 
 function codeForStatus(status) {
@@ -48,21 +53,90 @@ async function errorFrom(response) {
   return new ApiError(response.status, code, message);
 }
 
+const BUSY_RETRIES = 3;
+let sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Lets a test skip the waiting between retries.
+export function setSleepForTests(fn) {
+  sleep = fn || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+}
+
 // Sends the request and returns the Response, or throws ApiError.
+// The server answers 503 "busy" when many writers arrive at once and it wrote nothing,
+// so the same request is safe to send again a few times.
 async function send(path, init = {}) {
-  let response;
-  try {
-    response = await globalThis.fetch(path, {
-      credentials: 'same-origin',
-      cache: 'no-store',
-      ...init
-    });
-  } catch (err) {
-    if (err && err.name === 'AbortError') throw err;
-    throw new ApiError(0, 'network', NETWORK_MESSAGE);
+  for (let attempt = 0; ; attempt++) {
+    let response;
+    try {
+      response = await globalThis.fetch(path, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        ...init
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw err;
+      throw new ApiError(0, 'network', NETWORK_MESSAGE);
+    }
+    if (response.ok) return response;
+    const error = await errorFrom(response);
+    const aborted = init.signal && init.signal.aborted;
+    if (response.status === 503 && error.code === 'busy' && attempt < BUSY_RETRIES && !aborted) {
+      const header = response.headers && response.headers.get ? Number(response.headers.get('retry-after')) : NaN;
+      const seconds = Math.min(3, Number.isFinite(header) && header > 0 ? header : 1);
+      await sleep(seconds * 1000 + attempt * 500);
+      continue;
+    }
+    throw error;
   }
-  if (!response.ok) throw await errorFrom(response);
-  return response;
+}
+
+function tooLarge(limit) {
+  return new ApiError(0, 'too_large', 'The server sent more data than expected (over ' + Math.round(limit / 1048576) + ' MiB), so it was not read.');
+}
+
+// Reads a response body, giving up as soon as it is larger than limit bytes. The announced length
+// is checked first, and a body that lies about its length is stopped while it streams.
+async function readLimited(response, limit) {
+  const announced = Number(response.headers && response.headers.get ? response.headers.get('content-length') : NaN);
+  if (Number.isFinite(announced) && announced > limit) {
+    if (response.body && typeof response.body.cancel === 'function') response.body.cancel().catch(() => {});
+    throw tooLarge(limit);
+  }
+  const body = response.body;
+  if (!body || typeof body.getReader !== 'function') {
+    const all = new Uint8Array(await response.arrayBuffer());
+    if (all.length > limit) throw tooLarge(limit);
+    return all;
+  }
+  const reader = body.getReader();
+  const parts = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      reader.cancel().catch(() => {});
+      throw tooLarge(limit);
+    }
+    parts.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
+async function parseJson(response) {
+  const bytes = await readLimited(response, MAX_JSON_BYTES);
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    throw new ApiError(response.status, 'server_error', 'The server sent an answer that could not be read.');
+  }
 }
 
 async function requestJson(path, { method = 'GET', body, signal } = {}) {
@@ -72,11 +146,7 @@ async function requestJson(path, { method = 'GET', body, signal } = {}) {
     init.body = JSON.stringify(body);
   }
   const response = await send(path, init);
-  try {
-    return await response.json();
-  } catch {
-    throw new ApiError(response.status, 'server_error', 'The server sent an answer that could not be read.');
-  }
+  return parseJson(response);
 }
 
 const enc = encodeURIComponent;
@@ -108,20 +178,20 @@ export async function putBlob({ hash, size, bytes, signer, sign }) {
     },
     body: bytes
   });
-  try {
-    return await response.json();
-  } catch {
-    throw new ApiError(response.status, 'server_error', 'The server sent an answer that could not be read.');
-  }
+  return parseJson(response);
 }
 
-export async function getBlob(hash, { signal } = {}) {
+// maxBytes is the size the signed record states for this file. The answer is never read past it
+// (and never past the largest file the system accepts).
+export async function getBlob(hash, { signal, maxBytes } = {}) {
+  const limit = Number.isSafeInteger(maxBytes) && maxBytes > 0 ? Math.min(maxBytes, MAX_BLOB_BYTES) : MAX_BLOB_BYTES;
   const response = await send(`/api/blobs/${enc(hash)}`, { signal });
-  return new Uint8Array(await response.arrayBuffer());
+  return readLimited(response, limit);
 }
 
-export function listDocuments({ limit, before, owner, q, signal } = {}) {
-  return requestJson('/api/documents' + queryString({ limit, before, owner, q }), { signal });
+// before and beforeId together are the cursor: the updatedAt and docId of the last row already shown.
+export function listDocuments({ limit, before, beforeId, owner, q, signal } = {}) {
+  return requestJson('/api/documents' + queryString({ limit, before, beforeId, owner, q }), { signal });
 }
 
 export function getDocument(docId, opts) {
@@ -143,8 +213,9 @@ export function getLedger({ after, limit, signal } = {}) {
   return requestJson('/api/ledger' + queryString({ after, limit }), { signal });
 }
 
-export function listChannels(opts) {
-  return requestJson('/api/channels', opts);
+// The answer is { channels, next }. next is the cursor { before, beforeId } for the following page, or null.
+export function listChannels({ limit, before, beforeId, signal } = {}) {
+  return requestJson('/api/channels' + queryString({ limit, before, beforeId }), { signal });
 }
 
 export function createChannel(record, signature) {

@@ -161,6 +161,7 @@ export default function PublishForm({ status, identity, registration = 'unknown'
       setFile(null);
       setLabelText('');
       setLabelTouched(false);
+      setListed(false);
       setDetail('');
       if (typeof onPublished === 'function') onPublished(out.result);
     } else {
@@ -191,7 +192,10 @@ export default function PublishForm({ status, identity, registration = 'unknown'
 
   return (
     <div className="vault-publish-wrap">
-      {result ? <PublishResult result={result} meta={meta} onDismiss={() => setResult(null)} /> : null}
+      {result ? <PublishResult result={result} meta={meta} onDismiss={() => {
+          setResult(null);
+          setListed(false);
+        }} /> : null}
 
       <section className="ui-card vault-publish" aria-labelledby="vault-publish-title">
         <h2 className="ui-card__title" id="vault-publish-title">
@@ -256,7 +260,7 @@ export default function PublishForm({ status, identity, registration = 'unknown'
                 <span>
                   Show in the public list
                   <span className="ui-field__hint vault-checks__hint">
-                    Off by default. Unlisted documents can still be opened by anyone who has the link or id.
+                    Off by default. Unlisted only hides it from the list. The signed ledger is public, so its id, label and file hash can still be seen by anyone who reads the ledger.
                   </span>
                 </span>
               </label>

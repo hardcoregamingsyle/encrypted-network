@@ -10,6 +10,8 @@
 //
 // fetch and verify are injected, so tests can run everything without a server.
 import { verifyMessages } from '../../shared/verify.js';
+import { keyIdOf } from '../../shared/keys.js';
+import { verifyCheckpoint } from '../../shared/checkpoint.js';
 import { LIMITS, ZERO_HASH, isChannelId, isDocId, isHash, newNonce, validateRecord } from '../../shared/records.js';
 
 export const POLL_MS = 3000;
@@ -20,6 +22,10 @@ export const BODY_MAX = LIMITS.BODY_MAX;
 // A signed record is only accepted by the server for 10 minutes, so a retry of the same record
 // is only sensible for a little less than that.
 export const RESEND_WINDOW_MS = 8 * 60 * 1000;
+// The server signs a fresh checkpoint on every answer. One older than this is a replay of an old
+// answer, so it cannot show the channel head as it is now.
+export const MAX_CHECKPOINT_AGE_MS = 10 * 60 * 1000;
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Input checks and record building
@@ -200,10 +206,10 @@ export function describeApiError(err, what = 'do that') {
     };
   }
   if (code === 'unknown_signer') {
-    return { message: 'The server does not know your identity yet. Open the Keys page to register it, then try again.', hint: 'keys' };
+    return { message: 'The server does not know your identity yet. Open the Identity page to register it, then try again.', hint: 'keys' };
   }
   if (code === 'bad_signature') {
-    return { message: 'The server could not verify your signature. Check the Keys page, your stored key may not match.', hint: 'keys' };
+    return { message: 'The server could not verify your signature. Check the Identity page, your stored key may not match.', hint: 'keys' };
   }
   if (code === 'expired') {
     return { message: 'The server says the time on this device is more than 10 minutes away from its own time. Fix the clock and try again.', hint: '' };
@@ -251,7 +257,8 @@ export function mergeEntries(existing, incoming) {
     const have = bySeq.get(e.seq);
     if (!have) {
       bySeq.set(e.seq, e);
-    } else if (have.hash !== e.hash) {
+    } else if (have.hash !== e.hash || have.chainHash !== e.chainHash || have.prevChainHash !== e.prevChainHash) {
+      // Same position, different message or different chain values: the first one received stays.
       if (!conflicts.includes(e.seq)) conflicts.push(e.seq);
     }
   }
@@ -333,7 +340,7 @@ export async function verifyPageEntries(page, ctx = {}) {
 // Checks the channel head: is the newest loaded message exactly where the signed server
 // checkpoint says the channel ends? Uses only the newest message and the checkpoint of the page.
 // Returns { anchored, hasCheckpoint, checkpointSeq, signedAt, serverKeyId, pinned, headSeq, warnings }.
-export async function checkAnchor({ headEntry, identities, page, channelId, pin = '', verify = verifyMessages }) {
+export async function checkAnchor({ headEntry, identities, page, channelId, pin = '', verify = verifyMessages, now = Date.now() }) {
   const cp = page && page.checkpoint && typeof page.checkpoint === 'object' ? page.checkpoint : null;
   const payload = cp && cp.payload && typeof cp.payload === 'object' ? cp.payload : null;
   const out = {
@@ -344,9 +351,30 @@ export async function checkAnchor({ headEntry, identities, page, channelId, pin 
     serverKeyId: payload && typeof payload.serverKeyId === 'string' ? payload.serverKeyId : '',
     pinned: isHash(pin),
     headSeq: headEntry ? headEntry.seq : 0,
+    headFailed: false,
+    stale: false,
+    badSignature: false,
+    pinMismatch: false,
     warnings: []
   };
   if (!payload) return out;
+  // A newest message that failed its own check can never be tied to the server head.
+  if (headEntry && headEntry.verdict && headEntry.verdict.status !== 'verified') {
+    out.headFailed = true;
+    out.warnings = ['The newest message shown failed its own check, so it cannot be tied to the server head.'];
+    return out;
+  }
+  // Why a checkpoint does not count: a signature that does not fit the key, or a key that is not the pinned one.
+  try {
+    const server = page.server;
+    if (server && typeof server === 'object') {
+      const sigOk = await verifyCheckpoint(server.publicKey, cp);
+      if (!sigOk) out.badSignature = true;
+      else if (out.pinned && (await keyIdOf(server.publicKey)) !== pin) out.pinMismatch = true;
+    }
+  } catch {
+    out.badSignature = true;
+  }
   const view = {
     channel: page.channel,
     messages: headEntry ? [stripVerdict(headEntry)] : [],
@@ -360,6 +388,19 @@ export async function checkAnchor({ headEntry, identities, page, channelId, pin 
     const res = await verify(view, opts);
     out.anchored = Boolean(res && res.anchored);
     out.warnings = res && Array.isArray(res.warnings) ? res.warnings : [];
+    if (out.anchored && out.signedAt !== null) {
+      const age = now - out.signedAt;
+      if (age > MAX_CHECKPOINT_AGE_MS || age < -CLOCK_SKEW_MS) {
+        out.anchored = false;
+        out.stale = true;
+        out.warnings = [
+          ...out.warnings,
+          age > 0
+            ? 'The checkpoint was signed more than 10 minutes ago, so it may be an old answer played again. It does not show where the channel is now.'
+            : 'The checkpoint is dated in the future compared with this device clock.'
+        ];
+      }
+    }
   } catch (err) {
     out.warnings = ['The head check could not run: ' + reasonOf(err)];
   }
@@ -388,6 +429,26 @@ export function describeAnchor(anchor, { checking = false } = {}) {
     lines.push('The server did not send a signed checkpoint, so nobody vouches that no later messages are being held back.');
     return { tone: 'warn', title: 'Not tied to the server head', lines };
   }
+  if (anchor.pinMismatch) {
+    lines.push(
+      'The checkpoint was signed by a different server key than the one you pinned. This may be a different server posing as the one you trust. Do not rely on this channel until you know why.'
+    );
+    for (const w of anchor.warnings) if (!lines.includes(w)) lines.push(w);
+    return { tone: 'bad', title: 'STOP: the server key is not the pinned key', lines };
+  }
+  if (anchor.badSignature) {
+    lines.push('The signature on the checkpoint does not match the server key that came with it, so the checkpoint was ignored.');
+    for (const w of anchor.warnings) if (!lines.includes(w)) lines.push(w);
+    return { tone: 'bad', title: 'The checkpoint signature is not valid', lines };
+  }
+  if (anchor.stale) {
+    for (const w of anchor.warnings) if (!lines.includes(w)) lines.push(w);
+    return { tone: 'warn', title: 'Not tied to the server head, the checkpoint is not recent', lines };
+  }
+  if (anchor.headFailed) {
+    for (const w of anchor.warnings) if (!lines.includes(w)) lines.push(w);
+    return { tone: 'bad', title: 'Not tied to the server head, the newest message failed its check', lines };
+  }
   const older = anchor.checkpointSeq !== null && anchor.headSeq < anchor.checkpointSeq;
   if (older) {
     lines.push(
@@ -407,10 +468,21 @@ function isPage(page) {
   return page && typeof page === 'object' && Array.isArray(page.messages);
 }
 
-function mergeIdentities(have, add) {
+// Names for the signers of messages that passed their check. The name is read from the signed
+// identity record only (never from the outer displayName, which the server can change), and only
+// for a signer who has a verified message in this page, because verifyMessages checks exactly those
+// identity entries. A verified entry replaces an earlier one. Nothing else is stored.
+function mergeIdentities(have, add, entries) {
   const out = { ...have };
-  if (add && typeof add === 'object') {
-    for (const [k, v] of Object.entries(add)) if (!out[k]) out[k] = v;
+  if (!add || typeof add !== 'object') return out;
+  for (const e of Array.isArray(entries) ? entries : []) {
+    if (!e || !e.verdict || e.verdict.status !== 'verified' || !e.record) continue;
+    const signer = e.record.signer;
+    if (typeof signer !== 'string' || !Object.prototype.hasOwnProperty.call(add, signer)) continue;
+    const entry = add[signer];
+    const rec = entry && typeof entry === 'object' ? entry.record : null;
+    if (!rec || typeof rec !== 'object' || rec.type !== 'identity' || typeof rec.displayName !== 'string') continue;
+    out[signer] = { ...entry, displayName: rec.displayName };
   }
   return out;
 }
@@ -469,7 +541,7 @@ export function createChatSession({
   }
 
   // Adds a verified page to the state. Returns the number of new entries.
-  async function absorb(page, { startPrev, older = false } = {}) {
+  async function absorb(page, { startPrev, older = false, linkProblem = '' } = {}) {
     const p = pin();
     const known = hashIndex(state.entries);
     const checked = await verifyPageEntries(page, { channelId, pin: p, startPrev, known, verify });
@@ -481,6 +553,13 @@ export function createChatSession({
       problems = addProblem(problems, 'The links between some messages do not add up. Look for messages marked as failed.');
     }
     let incoming = checked.entries;
+    if (linkProblem && incoming.length > 0) {
+      problems = addProblem(problems, linkProblem);
+      incoming = incoming.map((e) => ({
+        ...e,
+        verdict: { status: 'invalid', detail: 'this message does not continue the messages already shown' }
+      }));
+    }
     if (older && incoming.length > 0 && state.entries.length > 0) {
       const last = incoming[incoming.length - 1];
       const first = state.entries[0];
@@ -501,7 +580,7 @@ export function createChatSession({
     }
     if (merged.dropped > 0) problems = addProblem(problems, 'The server sent entries without a valid position. They were ignored.');
     const before = state.entries.length;
-    const identities = mergeIdentities(state.identities, page.identities);
+    const identities = mergeIdentities(state.identities, page.identities, incoming);
     const entries = merged.entries;
     const head = entries.length > 0 ? entries[entries.length - 1] : null;
     let anchor = state.anchor;
@@ -543,18 +622,23 @@ export function createChatSession({
       const last = state.entries[state.entries.length - 1];
       const first = page.messages.find((m) => m && typeof m === 'object');
       let startPrev;
+      let linkProblem = '';
       if (last && first) {
-        if (first.seq === last.seq + 1) startPrev = last.chainHash;
-        else if (Number.isSafeInteger(first.seq) && first.seq > last.seq + 1) {
-          set({
-            problems: addProblem(
-              state.problems,
-              `Messages ${last.seq + 1} to ${first.seq - 1} were not sent by the server. Something may be held back.`
-            )
-          });
+        // The first answer must continue the chain already shown: the next position, starting from
+        // the chain hash of the last message shown. An overlap, a jump forward or other chain
+        // values are not attached to the known chain, and the new entries are marked as failed.
+        if (first.seq === last.seq + 1) {
+          startPrev = last.chainHash;
+          if (first.prevChainHash !== last.chainHash) {
+            linkProblem = `Message ${first.seq} does not continue from message ${last.seq}. The links do not match what was already shown.`;
+          }
+        } else if (Number.isSafeInteger(first.seq) && first.seq > last.seq + 1) {
+          linkProblem = `Messages ${last.seq + 1} to ${first.seq - 1} were not sent by the server. Something may be held back.`;
+        } else {
+          linkProblem = `The server answered with message ${first.seq} when message ${last.seq + 1} was expected, so it does not continue the messages already shown.`;
         }
       }
-      await absorb(page, { startPrev });
+      await absorb(page, { startPrev, linkProblem });
       if (disposed) return;
       set({ phase: 'ready', error: null, failures: 0 });
       guard++;

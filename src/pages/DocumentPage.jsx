@@ -24,6 +24,7 @@ import {
 } from '../components/doc/docLogic.js';
 import { useSteps } from '../components/doc/useSteps.js';
 import { useIdentity } from '../lib/identity.jsx';
+import { focusIsLost } from '../lib/focus.js';
 import { parseFragment } from '../lib/links.js';
 import { normalizePassword } from '../lib/lockfile.js';
 import { getPinnedServerKeyId } from '../lib/pin.js';
@@ -54,6 +55,16 @@ function ErrorView({ error, onRetry }) {
   );
 }
 
+// Removes #k=... from the address bar without adding a history entry. The router state is kept.
+function dropFragment() {
+  try {
+    if (typeof window === 'undefined' || !window.location.hash) return;
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+  } catch {
+    // an address that cannot be changed is left as it is
+  }
+}
+
 export default function DocumentPage() {
   const params = useParams();
   const location = useLocation();
@@ -75,7 +86,11 @@ export default function DocumentPage() {
 
   const runId = useRef(0);
   const lastStep = useRef('');
-  const startHash = useRef(location.hash);
+  const hashRef = useRef(location.hash);
+  hashRef.current = location.hash;
+  const handledKey = useRef('');
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   // Opens the document (fetch, verify, and unlock when there is a password).
   // mode 'first' shows the full page spinner, 'again' keeps the current page and shows progress.
@@ -83,6 +98,7 @@ export default function DocumentPage() {
     async (pw, mode) => {
       const id = ++runId.current;
       const pin = getPinnedServerKeyId();
+      pw = tidyPassword(pw);
       setPinned(pin);
       const stepSink = mode === 'first' ? onLoadStep : onUnlockStep;
       lastStep.current = '';
@@ -134,8 +150,12 @@ export default function DocumentPage() {
       setError({ kind: 'notfound', title: 'Not a document id', text: docIdProblem(docId) });
       return undefined;
     }
-    const fromLink = parseFragment(startHash.current) || '';
+    const fromLink = parseFragment(hashRef.current) || '';
     const pw = fromLink ? tidyPassword(fromLink) : '';
+    handledKey.current = location.key;
+    // The password was read, so it does not need to stay in the address bar, the history entry or
+    // a printed page footer. The share panel builds the link again when it is needed.
+    if (fromLink) dropFragment();
     setPassword(pw);
     setResult(null);
     setUnlockedWith('');
@@ -145,7 +165,30 @@ export default function DocumentPage() {
     };
   }, [docId, run]);
 
-  const unlock = useCallback(() => run(password, 'again'), [run, password]);
+  // A password added to the address after the page loaded (a client side link, or a pasted address)
+  // is read too, then removed from the address bar.
+  useEffect(() => {
+    if (handledKey.current === location.key || docIdProblem(docId)) return;
+    handledKey.current = location.key;
+    const fromLink = parseFragment(location.hash) || '';
+    if (!fromLink) return;
+    const pw = tidyPassword(fromLink);
+    dropFragment();
+    setPassword(pw);
+    run(pw, phaseRef.current === 'ready' ? 'again' : 'first');
+  }, [location.key, location.hash, docId, run]);
+
+  // The loading view is replaced by the result (or the error): keep focus on the new heading.
+  useEffect(() => {
+    if (phase === 'loading' || !focusIsLost()) return;
+    const heading = document.querySelector('#main h1');
+    if (heading) {
+      heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+    }
+  }, [phase]);
+
+  const unlock = useCallback((pw) => run(typeof pw === 'string' ? pw : password, 'again'), [run, password]);
   const reload = useCallback((pw) => run(pw, 'again'), [run]);
 
   if (phase === 'loading') {
@@ -185,7 +228,7 @@ export default function DocumentPage() {
           lead={revoked ? 'The owner revoked this document.' : 'Signed document with a public version history.'}
           documentTitle={title}
           actions={
-            <Button onClick={() => window.print()}>Print certificate</Button>
+            <Button onClick={() => window.print()}>Print verification report</Button>
           }
         />
 
@@ -221,6 +264,8 @@ export default function DocumentPage() {
                 head={access.head}
                 identity={identity}
                 unlockedWith={unlockedWith}
+                previousLabel={head && typeof head.label === 'string' ? head.label : ''}
+                onReload={() => reload(password)}
                 onPublished={(pw) => {
                   setPassword(tidyPassword(pw));
                   return reload(pw);
@@ -239,7 +284,7 @@ export default function DocumentPage() {
             </section>
           ) : identityStatus === 'none' && !revoked && verified ? (
             <p className="ui-muted doc-owner-note">
-              Are you the owner? Restore your identity on the <Link to="/keys">Keys page</Link> to publish new versions or revoke
+              Are you the owner? Restore your identity on the <Link to="/keys">Identity page</Link> to publish new versions or revoke
               this document.
             </p>
           ) : null}

@@ -113,7 +113,7 @@ export default function CreateChannelForm({ onCreated }) {
             <p>{formError}</p>
             {hint === 'keys' ? (
               <p>
-                <Link to="/keys">Open the Keys page</Link>
+                <Link to="/keys">Open the Identity page</Link>
               </p>
             ) : null}
           </Callout>

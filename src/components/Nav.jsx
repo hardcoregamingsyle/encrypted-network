@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import { useIdentity } from '../lib/identity.jsx';
@@ -16,7 +16,7 @@ function IdentityChip() {
   const { status, identity } = useIdentity();
   if (status === 'ready' && identity) {
     return (
-      <Link to="/keys" className="ui-nav__chip" title={`Your key id: ${identity.keyId}`}>
+      <Link to="/keys" className="ui-nav__chip" title={`${identity.displayName}, your key id: ${identity.keyId}`}>
         <Icon name="key" size={16} />
         <span className="ui-nav__chip-name">{identity.displayName}</span>
         <span className="ui-nav__chip-id">{shortKeyId(identity.keyId)}</span>
@@ -37,6 +37,7 @@ function IdentityChip() {
 // Sticky top bar. On small screens the links collapse behind a menu button.
 export default function Nav() {
   const [open, setOpen] = useState(false);
+  const toggleRef = useRef(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -46,7 +47,11 @@ export default function Nav() {
   useEffect(() => {
     if (!open) return undefined;
     function onKey(event) {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        // focus may be on a link inside the menu, which is hidden now: give it back to the menu button
+        if (toggleRef.current) toggleRef.current.focus();
+      }
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -62,6 +67,7 @@ export default function Nav() {
         <button
           type="button"
           className="ui-nav__toggle"
+          ref={toggleRef}
           aria-expanded={open ? 'true' : 'false'}
           aria-controls="main-menu"
           onClick={() => setOpen((v) => !v)}

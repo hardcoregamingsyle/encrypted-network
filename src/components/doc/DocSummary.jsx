@@ -3,6 +3,7 @@ import CopyButton from '../CopyButton.jsx';
 import HashText from '../HashText.jsx';
 import KeyBadge from '../KeyBadge.jsx';
 import { formatTime, timeAgo } from '../../lib/format.js';
+import { pinMismatch, serverKeyPinned } from '../../lib/trust.js';
 import { checkpointTime, revokeReason, statusOf, timelineOf } from './docLogic.js';
 
 // The main facts about the document: status, latest version, signer and times.
@@ -87,15 +88,17 @@ export default function DocSummary({ docId, bundle, verification, pinnedServerKe
           </dd>
         </div>
         <div>
-          <dt>Server key</dt>
+          <dt>Server key (as stated by the server)</dt>
           <dd>
             {serverKeyId ? <HashText value={serverKeyId} /> : 'none'}
             {serverKeyId ? (
               <div className="doc-subline">
-                {pinnedServerKeyId && pinnedServerKeyId === serverKeyId ? (
+                {pinnedServerKeyId && serverKeyPinned(verification) && serverKeyId === pinnedServerKeyId ? (
                   <span className="ui-badge ui-badge--good">Matches your pinned key</span>
-                ) : pinnedServerKeyId ? (
+                ) : pinnedServerKeyId && (pinMismatch(verification) || serverKeyId !== pinnedServerKeyId) ? (
                   <span className="ui-badge ui-badge--bad">Does not match your pinned key</span>
+                ) : pinnedServerKeyId ? (
+                  <span className="ui-badge ui-badge--warn">Not confirmed against your pinned key</span>
                 ) : (
                   <span className="ui-badge ui-badge--warn">Not pinned</span>
                 )}

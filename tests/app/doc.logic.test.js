@@ -384,7 +384,7 @@ describe('certificateData', () => {
     expect(c.pinned).toBe(true);
     expect(c.ok).toBe(true);
     expect(c.anchored).toBe(true);
-    expect(c.resultText).toBe('Passed all checks');
+    expect(c.resultText).toBe('Signatures, version chain and server checkpoint passed. Server key pinned and matched.');
     expect(c.ledgerCheckpoint.hash).toMatch(/^[0-9a-f]{64}$/);
     expect(c.headCheckpoint.seq).toBe(2);
     expect(c.checkedAt).toBe(1700000000000);

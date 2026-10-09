@@ -213,6 +213,21 @@
   font-weight: 650;
 }
 
+.verify-details-toggle > summary::before {
+  content: '';
+  flex: none;
+  width: 0;
+  height: 0;
+  margin-right: var(--space-1);
+  border-top: 0.3rem solid transparent;
+  border-bottom: 0.3rem solid transparent;
+  border-left: 0.45rem solid currentColor;
+}
+
+.verify-details-toggle[open] > summary::before {
+  transform: rotate(90deg);
+}
+
 .verify-details-toggle[open] > summary {
   border-bottom: 1px solid var(--color-border);
 }

@@ -5,7 +5,7 @@ import HashText from '../HashText.jsx';
 import Icon from '../Icon.jsx';
 import KeyBadge from '../KeyBadge.jsx';
 import VerifyResult from '../VerifyResult.jsx';
-import { formatBytes, formatTime, timeAgo } from '../../lib/format.js';
+import { formatBytes, formatTime, textOf, timeAgo } from '../../lib/format.js';
 import { spacedFingerprint } from './logic.js';
 
 function CheckLine({ ok, name, detail }) {
@@ -48,18 +48,21 @@ export default function DocResult({
   const head = verification.head;
   const records = bundle && Array.isArray(bundle.records) ? bundle.records : [];
   const lastRow = records.length > 0 ? records[records.length - 1] : null;
-  const docId = doc && typeof doc.docId === 'string' ? doc.docId : head && head.docId ? head.docId : '';
-  const ownerId = doc ? doc.ownerKeyId : null;
+  const docId = doc && typeof doc.docId === 'string' ? doc.docId : head && typeof head.docId === 'string' ? head.docId : '';
+  // The bundle is not trusted: every value is turned into text before it is drawn.
+  const ownerId = doc && typeof doc.ownerKeyId === 'string' ? doc.ownerKeyId : null;
   const ownerName =
-    bundle && bundle.identities && ownerId && bundle.identities[ownerId] ? bundle.identities[ownerId].displayName : '';
+    bundle && bundle.identities && ownerId && Object.prototype.hasOwnProperty.call(bundle.identities, ownerId) && bundle.identities[ownerId]
+      ? textOf(bundle.identities[ownerId].displayName)
+      : '';
   const fileChecked = blobCheck !== null || plaintextCheck !== null;
 
   return (
     <div className="verify-docresult" data-offline={offline ? 'true' : undefined}>
       {offline ? (
         <p className="verify-offline-tag">
-          <Icon name="lock" size={16} /> <strong>Checked offline.</strong> Nothing was sent anywhere. Only the saved
-          file and this browser were used.
+          <Icon name="lock" size={16} /> <strong>Checked offline.</strong> The saved file was read and checked in this
+          browser without a network request. That is what this page's own code reports, and it comes from the same site as the data.
         </p>
       ) : null}
 

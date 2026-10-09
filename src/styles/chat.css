@@ -5,7 +5,7 @@
 .chat-home {
   display: grid;
   gap: var(--space-3);
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 
@@ -67,6 +67,7 @@
 
 .chat-channel__id {
   margin: 0;
+  overflow-wrap: anywhere;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -352,6 +353,12 @@ button.chat-quote:hover {
   color: var(--color-warn);
 }
 
+.chat-anchor--bad {
+  border-color: var(--color-bad-border);
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+}
+
 .chat-anchor--info {
   border-color: var(--color-info-border);
   background: var(--color-info-bg);
@@ -466,5 +473,11 @@ button.chat-quote:hover {
   .chat-msg__meta {
     margin-left: 0;
     flex-basis: 100%;
+  }
+}
+
+@media (max-width: 40rem) {
+  .chat-newbtn {
+    min-height: var(--tap-size);
   }
 }

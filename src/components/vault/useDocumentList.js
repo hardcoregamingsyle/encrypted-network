@@ -2,7 +2,7 @@
 // status: 'loading' | 'ready' | 'error'. A newer request always wins over an older one.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listDocuments } from '../../lib/api.js';
-import { PAGE_SIZE, appendPage, hasMorePage, listParams, nextCursor } from './vaultLogic.js';
+import { PAGE_SIZE, appendPage, hasMorePage, listParams, nextCursor, nextCursorId } from './vaultLogic.js';
 
 function messageOf(err) {
   return err && err.message ? err.message : 'Could not load the documents.';
@@ -61,7 +61,8 @@ export default function useDocumentList({ owner = '', q = '', enabled = true, li
     setState((s) => ({ ...s, moreBusy: true, moreError: '', announce: '' }));
     try {
       const before = nextCursor(itemsRef.current);
-      const res = await listDocuments({ ...listParams({ owner, q, before, limit }), signal });
+      const beforeId = nextCursorId(itemsRef.current);
+      const res = await listDocuments({ ...listParams({ owner, q, before, beforeId, limit }), signal });
       if (mine !== ticket.current) return;
       const page = Array.isArray(res && res.documents) ? res.documents : [];
       const countBefore = itemsRef.current.length;

@@ -37,8 +37,8 @@ export async function runPublish({ file, label, listed, identity, publish = publ
     return {
       ok: false,
       error: err,
-      message: friendlyError(err),
-      hint: recoveryHint(failedStep),
+      message: friendlyError(err, failedStep),
+      hint: recoveryHint(failedStep, err),
       failedStep,
       steps
     };

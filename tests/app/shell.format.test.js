@@ -95,8 +95,8 @@ describe('shortHash and shortKeyId', () => {
     expect(shortKeyId(5)).toBe('');
   });
 
-  it('gives the first 8 characters of a key id', () => {
-    expect(shortKeyId(h)).toBe('abcdef01');
+  it('gives the first 16 characters (64 bits) of a key id', () => {
+    expect(shortKeyId(h)).toBe('abcdef0123456789');
     expect(shortKeyId('abc')).toBe('abc');
   });
 });

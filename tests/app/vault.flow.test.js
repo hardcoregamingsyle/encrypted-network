@@ -65,7 +65,7 @@ describe('runPublish', () => {
     expect(out.ok).toBe(false);
     expect(out.failedStep).toBe('upload');
     expect(out.message).toMatch(/Could not reach the server/);
-    expect(out.hint).toMatch(/no record was published/);
+    expect(out.hint).toMatch(/no record was sent/);
     expect(out.error).toBe(err);
     expect(out.steps.find((s) => s.id === 'upload').status).toBe('error');
     expect(out.steps.find((s) => s.id === 'publish').status).toBe('pending');

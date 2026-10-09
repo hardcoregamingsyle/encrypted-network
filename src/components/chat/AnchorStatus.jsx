@@ -2,7 +2,7 @@ import Icon from '../Icon.jsx';
 import { describeAnchor } from '../../lib/chatClient.js';
 import { formatTime } from '../../lib/format.js';
 
-const ICON = { good: 'check', warn: 'warn', info: 'info' };
+const ICON = { good: 'check', warn: 'warn', bad: 'x', info: 'info' };
 
 // The line under the messages: are the newest messages tied to the signed server head?
 export default function AnchorStatus({ anchor, checking = false }) {

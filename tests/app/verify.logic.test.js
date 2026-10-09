@@ -234,7 +234,8 @@ describe('pin helpers', () => {
   });
 
   it('pinStatus covers every state', () => {
-    const ready = (keyId, signing = true) => ({ status: 'ready', data: { signing, keyId } });
+    // keyChecked: the id was computed from the public key (PinSection does that), not just stated
+    const ready = (keyId, signing = true) => ({ status: 'ready', data: { signing, keyId, keyChecked: true } });
     expect(pinStatus('', ready(K))).toBe('none');
     expect(pinStatus(K, { status: 'loading' })).toBe('checking');
     expect(pinStatus(K, null)).toBe('checking');
@@ -243,6 +244,9 @@ describe('pin helpers', () => {
     expect(pinStatus(K, ready('', true))).toBe('no_signing');
     expect(pinStatus(K, ready(K))).toBe('match');
     expect(pinStatus(K, ready(L))).toBe('different');
+    // a key id that is only stated by the server is not enough
+    expect(pinStatus(K, { status: 'ready', data: { signing: true, keyId: K } })).toBe('unknown');
+    expect(pinStatus(K, { status: 'ready', data: { signing: true, keyId: K, keyChecked: true, inconsistent: true } })).toBe('inconsistent');
   });
 });
 

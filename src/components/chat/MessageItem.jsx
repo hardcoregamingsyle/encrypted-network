@@ -38,7 +38,7 @@ export function ReplyPreview({ replyTo, parent, parentName, onJump }) {
       type="button"
       className="chat-quote"
       onClick={() => onJump && onJump(parent.seq)}
-      aria-label={`Replying to ${who}, message ${parent.seq}. Jump to it.`}
+      aria-label={`${ok ? who : 'A message that failed verification'}: ${ok ? quoteText(parent.record && parent.record.body) : 'its text is not shown'}. Replying to message ${parent.seq}, jump to it.`}
     >
       <span className="chat-quote__who">{ok ? who : 'A message that failed verification'}</span>
       <span className="chat-quote__text">{ok ? quoteText(parent.record && parent.record.body) : 'Its text is not shown.'}</span>

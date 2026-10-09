@@ -3,6 +3,7 @@ import HashText from './HashText.jsx';
 import Icon from './Icon.jsx';
 import KeyBadge from './KeyBadge.jsx';
 import { formatTime } from '../lib/format.js';
+import { serverKeyPinned } from '../lib/trust.js';
 
 const CHECK_NAMES = {
   identities_match: 'Signer identities',
@@ -41,10 +42,18 @@ function headline(result) {
       text: 'This record is not tied to the server head, so a newer version could exist.'
     };
   }
+  if (!serverKeyPinned(result)) {
+    // Anyone can make a server key, a signer and a document, so this only shows an answer that agrees with itself.
+    return {
+      tone: 'warn',
+      title: 'Signatures, version chain and server checkpoint check out, but the server key is not pinned',
+      text: 'Every version is signed by one key and the versions link in order. Because no server key is pinned, this only shows that the answer agrees with itself. Anyone can make their own keys and documents that pass these checks. Pin the server key id from an official source on the Verify page to tie the answer to a server you trust.'
+    };
+  }
   return {
     tone: 'good',
     title: 'Signatures, version chain and server checkpoint all check out',
-    text: 'Every version is signed by the owner key, the versions link in order, and the server confirmed this latest version when it answered.'
+    text: 'Every version is signed by the owner key, the versions link in order, and the server whose key you pinned confirmed this latest version when it answered.'
   };
 }
 

@@ -20,14 +20,44 @@ function validTime(ms) {
   return typeof ms === 'number' && Number.isFinite(ms) && Math.abs(ms) <= 8.64e15;
 }
 
-// Local date and time that people can read, for example "9 Oct 2026, 14:05".
+// Local date and time that people can read, with the time zone, for example "9 Oct 2026, 2:05 pm UTC".
+// The zone matters on a record: the same moment prints differently on two computers.
 export function formatTime(ms) {
   if (!validTime(ms)) return 'unknown time';
   try {
-    return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return new Date(ms).toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
   } catch {
     return new Date(ms).toISOString();
   }
+}
+
+// The same moment in UTC, for example "2026-10-09 14:05:00 UTC".
+export function formatUtc(ms) {
+  if (!validTime(ms)) return 'unknown time';
+  try {
+    return new Date(ms).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, ' UTC');
+  } catch {
+    return 'unknown time';
+  }
+}
+
+// "is 50 MiB and 1 byte over the 50 MiB limit": exact, so rounding never makes the sentence contradict itself.
+export function overLimitText(size, limit) {
+  if (typeof size !== 'number' || typeof limit !== 'number' || !Number.isFinite(size) || !Number.isFinite(limit) || size <= limit) return '';
+  const over = size - limit;
+  return `${formatBytes(size)} (${size.toLocaleString('en')} bytes), which is ${over.toLocaleString('en')} ${over === 1 ? 'byte' : 'bytes'} over the limit of ${formatBytes(limit)}`;
+}
+
+// A server field shown as text: anything that is not a string becomes an empty string.
+export function textOf(v) {
+  return typeof v === 'string' ? v : '';
 }
 
 function plural(n, word) {
@@ -63,8 +93,9 @@ export function shortHash(h, n = 8) {
   return h.slice(0, n) + '...';
 }
 
-// The first 8 characters of a key id, used as a recognisable tag next to a name.
+// The first 16 characters (64 bits) of a key id, used as a tag next to a name. It is a hint to
+// recognise a signer, never the identifier itself: the full 64 character key id is the identifier.
 export function shortKeyId(id) {
   if (typeof id !== 'string') return '';
-  return id.slice(0, 8);
+  return id.slice(0, 16);
 }

@@ -1,8 +1,10 @@
 import Icon from './Icon.jsx';
 
 const ICONS = { info: 'info', good: 'check', warn: 'warn', bad: 'x' };
-const ROLES = { info: 'status', good: 'status', warn: 'note', bad: 'alert' };
+const ROLES = { info: 'status', good: 'status', warn: 'status', bad: 'alert' };
 
+// tone: info, good, warn or bad. warn is a polite live region and bad is an alert, so a result that
+// appears after an action is spoken. (A plain note is not announced by screen readers.)
 // tone: info, good, warn or bad. The icon and title mean the tone is not shown by colour alone.
 export default function Callout({ tone = 'info', title, children, className = '' }) {
   const t = ICONS[tone] ? tone : 'info';

@@ -7,15 +7,20 @@ import KeyBadge from '../KeyBadge.jsx';
 import Spinner from '../Spinner.jsx';
 import { listChannels } from '../../lib/api.js';
 import { describeApiError, sortChannels } from '../../lib/chatClient.js';
-import { formatTime, timeAgo } from '../../lib/format.js';
+import { formatTime, shortHash, textOf, timeAgo } from '../../lib/format.js';
+import { isHash } from '../../../shared/records.js';
 
 export function ChannelCard({ channel, now }) {
+  // Every field comes from the server, so each one is checked before it is shown.
   const count = Number.isFinite(channel.messageCount) ? channel.messageCount : 0;
+  const title = textOf(channel.title) || textOf(channel.channelId);
+  const docId = textOf(channel.docId);
+  const createdBy = isHash(channel.createdBy) ? channel.createdBy : '';
   return (
     <li className="chat-channel">
       <div className="chat-channel__main">
         <h3 className="chat-channel__title">
-          <Link to={`/chat/${channel.channelId}`}>{channel.title}</Link>
+          <Link to={`/chat/${channel.channelId}`}>{title}</Link>
         </h3>
         <p className="chat-channel__id">{channel.channelId}</p>
         <p className="chat-channel__meta">
@@ -27,15 +32,15 @@ export function ChannelCard({ channel, now }) {
             <span>no messages yet</span>
           )}
         </p>
-        {channel.createdBy ? (
+        {createdBy ? (
           <p className="chat-channel__meta">
             <span>Started by </span>
-            <KeyBadge keyId={channel.createdBy} name={channel.createdByName} />
+            <KeyBadge keyId={createdBy} name={textOf(channel.createdByName)} />
           </p>
         ) : null}
-        {channel.docId ? (
+        {docId ? (
           <p className="chat-channel__meta">
-            About document <Link to={`/d/${channel.docId}`}>{channel.docId.slice(0, 8)}...</Link>
+            About document <Link to={`/d/${docId}`}>{shortHash(docId, 8)}</Link>
           </p>
         ) : null}
       </div>

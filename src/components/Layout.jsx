@@ -23,6 +23,22 @@ export default function Layout({ children }) {
     window.scrollTo(0, 0);
   }, [location.pathname]);
 
+  // After a form is submitted with bad input, the page shows the errors (Field sets aria-invalid on
+  // the control). Move focus to the first control with an error, so a keyboard or screen reader user
+  // lands on the problem. React has already drawn the errors by the time the timer runs.
+  useEffect(() => {
+    function onSubmit(event) {
+      const form = event.target;
+      if (!form || typeof form.querySelector !== 'function') return;
+      setTimeout(() => {
+        const bad = form.querySelector('[aria-invalid="true"]');
+        if (bad && typeof bad.focus === 'function') bad.focus();
+      }, 0);
+    }
+    document.addEventListener('submit', onSubmit, true);
+    return () => document.removeEventListener('submit', onSubmit, true);
+  }, []);
+
   function skip(event) {
     event.preventDefault();
     if (mainRef.current) mainRef.current.focus();

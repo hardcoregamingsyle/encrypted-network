@@ -45,7 +45,7 @@ describe('fileProblem', () => {
     expect(fileProblem({ name: '   ', size: 5 })).toMatch(/no name/);
     expect(fileProblem({ name: 'a', size: NaN })).toMatch(/not known/);
     const big = fileProblem({ name: 'a', size: MAX_FILE_BYTES + 1 });
-    expect(big).toMatch(/limit is 50 MiB/);
+    expect(big).toMatch(/1 byte over the limit of 50 MiB/);
   });
 });
 
@@ -144,21 +144,30 @@ describe('errors', () => {
     expect(friendlyError({ code: 'expired' })).toMatch(/clock/);
     expect(friendlyError({ code: 'unknown_signer' })).toMatch(/Register your key/);
     expect(friendlyError({ code: 'too_large' })).toMatch(/too large/);
-    expect(friendlyError({ code: 'server_error' })).toMatch(/Nothing was published/);
+    expect(friendlyError({ code: 'server_error' })).toMatch(/Try again in a moment/);
+    // a failure while the record is being sent does not say whether it was saved
+    expect(friendlyError({ code: 'server_error' }, 'publish')).toMatch(/not known whether the server saved it/);
+    expect(friendlyError({ code: 'network' }, 'publish')).toMatch(/not known whether the server saved it/);
+    expect(friendlyError({ code: 'server_error' }, 'publish')).not.toMatch(/Nothing was published/);
   });
 
   it('keeps the message of other errors and survives odd input', () => {
     expect(friendlyError(new Error('the file is empty'))).toBe('the file is empty');
-    expect(friendlyError(null)).toMatch(/Nothing was published/);
-    expect(friendlyError('text')).toMatch(/Nothing was published/);
+    expect(friendlyError(null)).toMatch(/went wrong/);
+    expect(friendlyError('text')).toMatch(/went wrong/);
     expect(friendlyError({ code: 5, message: '' })).toMatch(/went wrong/);
   });
 
   it('is honest about what happened at each step', () => {
     expect(recoveryHint('derive')).toMatch(/not sent anywhere/);
-    expect(recoveryHint('upload')).toMatch(/no record was published/);
-    expect(recoveryHint('publish')).toMatch(/may already be on the server/);
-    expect(recoveryHint('')).toMatch(/new password/);
+    expect(recoveryHint('upload')).toMatch(/no record was sent/);
+    // after a lost answer the document may exist, so the hint never says that it does not
+    const lost = recoveryHint('publish', { code: 'network', status: 0 });
+    expect(lost).toMatch(/may already have saved the signed record/);
+    expect(lost).not.toMatch(/does not exist|no record was published|Nothing was published/);
+    // a clear refusal is different
+    expect(recoveryHint('publish', { code: 'bad_request', status: 400 })).toMatch(/refused the record/);
+    expect(recoveryHint('')).toMatch(/same password/);
   });
 
   it('knows when registering the key would help', () => {

@@ -21,8 +21,9 @@ export default function AboutPage() {
         <p>
           Each person has a signing identity, which is a key pair made in their browser. Every document version and
           every chat message is signed with that key. The key is named by the hash of its public half, called the key
-          id. The server keeps the records and a ledger that links them in order. Anyone can fetch a document and
-          check the signatures and links themselves, in their own browser.
+          id. The server keeps the records and a ledger that links them in order. A document can be fetched and
+          its signatures and links checked in the browser. The checking program comes from this same site, see the limits
+          below.
         </p>
       </section>
 
@@ -40,8 +41,9 @@ export default function AboutPage() {
         <h2 id="about-public">What is public</h2>
         <ul className="ui-list">
           <li>
-            The label you give the document. An unlisted document is left out of the public list, but anyone who has
-            its id can still read these details.
+            The label you give the document. Unlisted only means a document is left out of the public list. It is not
+            secret: the signed ledger is public, so anyone who reads the whole ledger can see the id, label, file hash
+            and times of every document, listed or not.
           </li>
           <li>The owner key id and the display name they chose.</li>
           <li>The version history and the times each version was signed.</li>
@@ -71,8 +73,8 @@ export default function AboutPage() {
           </li>
         </ul>
         <p>
-          Try it on the <Link to="/verify">verify page</Link>. A verifier can pin the server key id, so a different
-          server cannot pose as this one.
+          Try it on the <Link to="/verify">verify page</Link>. A verifier can pin the server key id, so a server
+          with a different key cannot pose as this one, as long as the checking program itself is the real one.
         </p>
       </section>
 
@@ -86,6 +88,12 @@ export default function AboutPage() {
           <li>The homemade cipher layer has not been independently reviewed. The standard AES layer still protects the file.</li>
           <li>
             Timestamps come from the signer and the server clock. They are not from a trusted timestamp authority.
+          </li>
+          <li>
+            The program that does the checking is delivered by this same site. A changed or copied site could send
+            different code that skips a check, reports a pass, or sends a password somewhere. Pinning a server key does
+            not help against that. A separate verification program that does not come from this site is not provided yet,
+            so for records that matter, have the checks repeated with code you got from a source you trust.
           </li>
           <li>The identity is only a key. Nobody has checked who the person really is.</li>
           <li>It is a prototype, not a certified system.</li>

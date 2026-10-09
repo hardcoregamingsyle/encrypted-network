@@ -1,6 +1,7 @@
 // Pure helpers for the Vault page. No React, no DOM, so they can be tested in Node.
 import { LIMITS, ZERO_HASH, validateRecord } from '../../../shared/records.js';
-import { formatBytes } from '../../lib/format.js';
+import { overLimitText } from '../../lib/format.js';
+import { outcomeUnknown } from '../../lib/outcome.js';
 
 export const MAX_FILE_BYTES = LIMITS.MAX_FILE_BYTES;
 export const LABEL_MAX = LIMITS.LABEL_MAX;
@@ -18,7 +19,7 @@ export function fileProblem(file) {
   if (!Number.isFinite(file.size)) return 'The size of the file is not known.';
   if (file.size < 1) return 'The file is empty. Choose a file that has content.';
   if (file.size > MAX_FILE_BYTES) {
-    return `The file is ${formatBytes(file.size)}. The limit is ${formatBytes(MAX_FILE_BYTES)}.`;
+    return `The file is ${overLimitText(file.size, MAX_FILE_BYTES)}.`;
   }
   return '';
 }
@@ -120,13 +121,18 @@ export function doneCount(steps) {
 
 // ---------- errors ----------
 
-// A short sentence a person can act on. err can be anything that was thrown.
-export function friendlyError(err) {
+// A short sentence a person can act on. err can be anything that was thrown. stepId is the step that
+// was running. A lost answer or a server error at the publish step does not tell whether the server
+// stored the record, so those say so and never claim that nothing was published.
+export function friendlyError(err, stepId = '') {
   const code = err && typeof err.code === 'string' ? err.code : '';
   const message = err && typeof err.message === 'string' && err.message ? err.message : '';
+  const saving = stepId === 'sign' || stepId === 'publish';
   switch (code) {
     case 'network':
-      return 'Could not reach the server. Check your connection and try again.';
+      return saving
+        ? 'The connection failed while the record was being sent, so it is not known whether the server saved it.'
+        : 'Could not reach the server. Check your connection and try again.';
     case 'rate_limited':
       return 'You have published or uploaded too often in the last hour. Wait a while and try again.';
     case 'expired':
@@ -136,26 +142,39 @@ export function friendlyError(err) {
     case 'too_large':
       return 'The server refused the file because it is too large, or your upload quota is used up.';
     case 'server_error':
-      return 'The server had a problem. Nothing was published. Try again in a moment.';
+      return saving
+        ? 'The server had a problem while the record was being sent, so it is not known whether the server saved it.'
+        : 'The server had a problem. Try again in a moment.';
     default:
-      return message || 'Something went wrong. Nothing was published.';
+      return message || 'Something went wrong. Try again.';
   }
 }
 
+// True when a failure at stepId leaves it unknown whether the server stored the signed record: no
+// answer or a server error after the record was sent. A clear refusal (a 4xx answer) is not unknown.
+export function outcomeIsUnknown(stepId, err) {
+  return (stepId === 'publish' || stepId === 'sign') && outcomeUnknown(err);
+}
+
 // Tells what state things are in after a failure at stepId. Honest about what already happened.
-export function recoveryHint(stepId) {
+// Publishing again reuses the same locked file, password, document id and signed record (see
+// publishNewDocument), so a retry never makes a second document.
+export function recoveryHint(stepId, err) {
   switch (stepId) {
     case 'read':
     case 'derive':
     case 'lock':
       return 'The file was not sent anywhere. Fix the problem and publish again.';
     case 'upload':
-      return 'The upload did not finish, so no record was published. Publishing again starts over with a new password.';
+      return 'The upload did not finish and no record was sent. Publish again: the same locked file and password are used.';
     case 'sign':
     case 'publish':
-      return 'The locked file may already be on the server, but no record was published, so the document does not exist yet. Publishing again starts over with a new password.';
+      if (outcomeIsUnknown(stepId, err)) {
+        return 'The server may already have saved the signed record, so the document may exist. Press the button again: the same document id, password and signed record are sent, and if the first try got through the server says so and nothing is duplicated. Check your documents list afterwards.';
+      }
+      return 'The server refused the record, so it was not published. The locked file may already be on the server. Fix the problem and publish again: the same password is used.';
     default:
-      return 'Publishing again starts over with a new password.';
+      return 'Publish again. The same password and locked file are used if they were already made.';
   }
 }
 
@@ -173,12 +192,16 @@ export function normalizeQuery(text) {
 // ---------- document lists ----------
 
 // Query for GET /api/documents. before is the updatedAt of the last row already shown.
-export function listParams({ owner, q, before, limit = PAGE_SIZE } = {}) {
+export function listParams({ owner, q, before, beforeId, limit = PAGE_SIZE } = {}) {
   const p = { limit };
   if (owner) p.owner = owner;
   const query = normalizeQuery(q);
   if (query) p.q = query;
-  if (Number.isFinite(before)) p.before = before;
+  if (Number.isFinite(before)) {
+    p.before = before;
+    // the document id breaks ties between documents with the same updatedAt
+    if (typeof beforeId === 'string' && /^[0-9a-f]{32}$/.test(beforeId)) p.beforeId = beforeId;
+  }
   return p;
 }
 
@@ -200,6 +223,13 @@ export function nextCursor(rows) {
   return Number.isFinite(last.updatedAt) ? last.updatedAt : undefined;
 }
 
+// The document id of the last row, sent together with the updatedAt from nextCursor.
+export function nextCursorId(rows) {
+  if (!rows.length) return undefined;
+  const last = rows[rows.length - 1];
+  return typeof last.docId === 'string' ? last.docId : undefined;
+}
+
 // A full page means there may be more. A short page means this was the end.
 export function hasMorePage(page, limit = PAGE_SIZE) {
   return Array.isArray(page) && page.length >= limit;
@@ -217,6 +247,13 @@ function fromServer(d) {
     listed: true,
     local: false
   };
+}
+
+// Rows from the server list that name this key as the owner. A server can put any document in a
+// list that is filtered by owner, so the owner is checked again here.
+export function ownedBy(items, keyId) {
+  if (typeof keyId !== 'string' || keyId === '' || !Array.isArray(items)) return [];
+  return items.filter((d) => d && typeof d === 'object' && d.ownerKeyId === keyId);
 }
 
 // heads: { [docId]: { state:'ok', head } | { state:'missing' } | { state:'error' } }
@@ -302,7 +339,7 @@ export function buildSaveText({ docId, password, fingerprint, links, label, crea
     `Password: ${password}`,
     `Fingerprint (SHA-256 of the original file): ${fingerprint}`,
     '',
-    'Verify only link (no password, shows the signatures and the chain):',
+    'Verify-only link (no password, shows the signatures and the chain):',
     links.verify,
     '',
     'Full link (includes the password after the #, anyone with it can open the file):',

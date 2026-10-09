@@ -18,7 +18,7 @@ import {
   describeApiError,
   dropDelivered
 } from '../../lib/chatClient.js';
-import { formatTime } from '../../lib/format.js';
+import { formatTime, textOf } from '../../lib/format.js';
 import { useIdentity } from '../../lib/identity.jsx';
 import { getPinnedServerKeyId } from '../../lib/pin.js';
 import { recordHash } from '../../../shared/records.js';
@@ -220,7 +220,10 @@ export default function ChannelView({ channelId }) {
   );
 
   const channel = view.channel;
-  const title = channel && typeof channel.title === 'string' && channel.title ? channel.title : channelId;
+  // The channel summary is not signature checked, so every field is coerced before it is shown.
+  const title = (channel && textOf(channel.title)) || channelId;
+  const startedBy = channel ? textOf(channel.createdByName) : '';
+  const aboutDoc = channel ? textOf(channel.docId) : '';
   const header = useMemo(
     () => (
       <PageHeader
@@ -230,11 +233,11 @@ export default function ChannelView({ channelId }) {
           channel ? (
             <span className="chat-lead">
               <span className="chat-lead__id">{channelId}</span>
-              {channel.createdByName ? <span>{`Started by ${channel.createdByName}`}</span> : null}
+              {startedBy ? <span>{`Started by ${startedBy} (not signature checked)`}</span> : null}
               {Number.isFinite(channel.createdAt) ? <span>{formatTime(channel.createdAt)}</span> : null}
-              {channel.docId ? (
+              {aboutDoc ? (
                 <span>
-                  About document <Link to={`/d/${channel.docId}`}>{channel.docId.slice(0, 8)}...</Link>
+                  About document <Link to={`/d/${aboutDoc}`}>{aboutDoc.slice(0, 8)}...</Link>
                 </span>
               ) : null}
             </span>
@@ -324,8 +327,7 @@ export default function ChannelView({ channelId }) {
             {pollWords(poll)}
           </p>
           <p className="ui-muted chat-note">
-            Names come from each sender's own signed identity record. The short code next to a name is the start of the hash of their public key, and it is what identifies them.
-            Times are written by the sender and are not attested.
+            Names on messages come from each sender's own signed identity record, and names are not unique, so two people can choose the same name. The code next to a name is only the first 16 of 64 characters of the sender's key id. Press it to see the whole key id, which is what identifies a sender. The channel title and who started it come from the server and are not signature checked. Times are written by the sender and are not attested.
           </p>
         </>
       ) : null}
@@ -334,7 +336,7 @@ export default function ChannelView({ channelId }) {
         signerName={identity ? identity.displayName : ''}
         replyTo={replyTo}
         replyName={replyTo && replyTo.record ? nameOf(replyTo.record.signer) : ''}
-        onCancelReply={() => setReplyTo(null)}
+        onCancelReply={() => { setReplyTo(null); if (inputRef.current) inputRef.current.focus(); }}
         onSend={send}
         inputRef={inputRef}
       />

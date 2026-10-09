@@ -35,7 +35,7 @@ export default function Field({ label, hint, error, children, className = '' }) 
       ) : null}
       {control}
       {error ? (
-        <p className="ui-field__error" id={errorId}>
+        <p className="ui-field__error" id={errorId} role="alert">
           {error}
         </p>
       ) : null}

@@ -259,14 +259,15 @@ describe('Certificate', () => {
   it('has the facts and the sentence about limits', async () => {
     const f = await fixture();
     const html = render(h(Certificate, { bundle: f.bundle, verification: f.verification, pinnedServerKeyId: f.serverKey.keyId, checkedAt: 1700000000000 }));
-    expect(html).toContain('Document verification certificate');
-    expect(html).toContain('Passed all checks');
+    expect(html).toContain('Document verification report');
+    expect(html).toContain('Signatures, version chain and server checkpoint passed.');
+    expect(html).toContain('Server key pinned and matched.');
     expect(html).toContain(f.docId);
     expect(html).toContain(f.versions[1].recordHash);
     expect(html).toContain(f.owner.keyId);
     expect(html).toContain(f.serverKey.keyId);
     expect(html).toContain('Registry Office');
-    expect(html).toContain('yes, and it matches');
+    expect(html).toContain('yes, and the checkpoint was checked against it');
     expect(html).toContain('not been audited or certified');
     expect(html).toContain('Latest here means');
   });

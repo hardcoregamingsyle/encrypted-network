@@ -5,7 +5,8 @@ import { PROBLEM_CAP } from '../../lib/audit.js';
 import { formatTime } from '../../lib/format.js';
 
 function plural(n, word) {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
+  const many = word.endsWith('y') ? word.slice(0, -1) + 'ies' : word + 's';
+  return `${n} ${n === 1 ? word : many}`;
 }
 
 function headline(result) {

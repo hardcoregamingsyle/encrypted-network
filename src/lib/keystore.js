@@ -123,6 +123,8 @@ function normalizePassphrase(passphrase) {
   return passphrase.normalize('NFC');
 }
 
+const COMMON_WORDS = ['password', 'passw0rd', 'letmein', 'qwerty', 'abcdef', '123456', 'admin', 'welcome', 'iloveyou', 'changeme', 'secret'];
+
 // Rough strength hint for the form. level 0..4. ok is true when the passphrase is long enough to use.
 export function passphraseStrength(passphrase) {
   const text = typeof passphrase === 'string' ? passphrase : '';
@@ -132,10 +134,18 @@ export function passphraseStrength(passphrase) {
   const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((re) => re.test(text)).length;
   const distinct = new Set(Array.from(text.toLowerCase())).size;
   if (distinct < 5) return { level: 1, label: 'Too repetitive', ok: false };
-  const words = text.trim().split(/\s+/).length;
+  const wordList = text.trim().toLowerCase().split(/\s+/);
+  // Repeating a word adds length but almost no strength, so only different words count.
+  const words = new Set(wordList).size;
+  if (wordList.length > 1 && words === 1) return { level: 1, label: 'Too repetitive', ok: false };
   let score = 2;
   if (length >= 14 || words >= 3) score += 1;
   if ((length >= 18 && classes >= 2) || words >= 4 || (length >= 14 && classes >= 3)) score += 1;
+  // The first things an offline guesser tries.
+  const lower = text.toLowerCase();
+  if (COMMON_WORDS.some((w) => lower.includes(w))) {
+    return { level: Math.min(score, 2), label: 'Weak, it contains a very common word', ok: true };
+  }
   const labels = ['', '', 'Fair', 'Good', 'Strong'];
   return { level: score, label: labels[score], ok: true };
 }
@@ -247,7 +257,10 @@ export async function openBackup(backupText, passphrase) {
     throw new Error(MSG_DAMAGED);
   }
   await checkInner(inner, file.keyId);
-  return { keyId: file.keyId, ...inner };
+  // Built from the checked fields only. Any other member of the decrypted file is dropped, so it
+  // cannot replace the key id that was just verified.
+  const { privateJwk, publicKey, displayName, createdAt, record, signature } = inner;
+  return { privateJwk, publicKey, displayName, createdAt, record, signature, keyId: file.keyId };
 }
 
 function publicJwkOrder(jwk) {

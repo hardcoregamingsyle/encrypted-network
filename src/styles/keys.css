@@ -3,7 +3,7 @@
 .keys-columns {
   display: grid;
   gap: var(--space-2);
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
 

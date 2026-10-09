@@ -4,7 +4,7 @@ import Callout from '../Callout.jsx';
 import Field from '../Field.jsx';
 import Spinner from '../Spinner.jsx';
 import { openDocument } from '../../lib/publish.js';
-import { normalizePassword } from '../../lib/lockfile.js';
+import { tidyPassword } from '../doc/docLogic.js';
 import DocResult from './DocResult.jsx';
 import Section from './Section.jsx';
 import { parseDocInput } from './logic.js';
@@ -40,10 +40,16 @@ export default function DocumentSection({ pinned }) {
     const p = parseDocInput(input);
     if (!p.ok) {
       setInputError(p.error);
+      // the earlier result belongs to another input, so it is not left on screen under the error
+      run.current += 1;
+      setResult(null);
+      setError('');
+      setPhase('idle');
       return;
     }
     setInputError('');
-    const used = normalizePassword(password) || p.password;
+    // tidyPassword also reads a full link typed or filled in by the browser, not only a pasted one
+    const used = tidyPassword(password) || p.password;
     const mine = ++run.current;
     setPhase('working');
     setResult(null);

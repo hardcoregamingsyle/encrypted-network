@@ -156,7 +156,7 @@ describe('DocResult', () => {
     const { bundle, verification } = await verified();
     const html = render(h(DocResult, { verification, bundle, offline: true, attestedAt: bundle.checkpoint.payload.signedAt }));
     expect(html).toContain('Checked offline');
-    expect(html).toContain('Nothing was sent anywhere');
+    expect(html).toContain('without a network request');
     expect(html).toContain('A newer version may have been published since');
     expect(html).not.toContain('No password was given');
   });

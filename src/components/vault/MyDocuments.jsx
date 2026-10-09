@@ -6,7 +6,7 @@ import { getDocumentHead } from '../../lib/api.js';
 import { forgetDoc, listLocalDocs } from '../../lib/localDocs.js';
 import { DocListBody, SkeletonRows } from './DocList.jsx';
 import useDocumentList from './useDocumentList.js';
-import { PAGE_SIZE, idsToLookUp, mergeDocuments } from './vaultLogic.js';
+import { PAGE_SIZE, idsToLookUp, mergeDocuments, ownedBy } from './vaultLogic.js';
 
 const BATCH = 5;
 
@@ -32,10 +32,14 @@ export default function MyDocuments({ status, identity, reloadKey = 0 }) {
   const list = useDocumentList({ owner: keyId, enabled: status === 'ready' && !!keyId, limit: PAGE_SIZE, reloadKey });
 
   // Look up local documents that the server list does not show.
+  // The server filters by owner, but a server can say anything. Only rows that name this key as the
+  // owner are shown as yours; the document page checks the signatures.
+  const mine = useMemo(() => ownedBy(list.items, keyId), [list.items, keyId]);
+
   const waiting = status === 'loading' || (status === 'ready' && keyId && list.status === 'loading');
   useEffect(() => {
     if (waiting) return undefined;
-    const ids = idsToLookUp(list.items, local, headsRef.current);
+    const ids = idsToLookUp(mine, local, headsRef.current);
     if (ids.length === 0) return undefined;
     let cancelled = false;
     (async () => {
@@ -54,7 +58,7 @@ export default function MyDocuments({ status, identity, reloadKey = 0 }) {
     return () => {
       cancelled = true;
     };
-  }, [waiting, list.items, local]);
+  }, [waiting, mine, local]);
 
   function forget(docId) {
     forgetDoc(docId);
@@ -67,7 +71,7 @@ export default function MyDocuments({ status, identity, reloadKey = 0 }) {
     list.reload();
   }
 
-  const rows = useMemo(() => mergeDocuments(list.items, local, heads), [list.items, local, heads]);
+  const rows = useMemo(() => mergeDocuments(mine, local, heads), [mine, local, heads]);
   const failedButHasRows = list.status === 'error' && rows.length > 0;
   const view = failedButHasRows ? { ...list, status: 'ready' } : list;
 
@@ -83,7 +87,8 @@ export default function MyDocuments({ status, identity, reloadKey = 0 }) {
       </div>
       <p className="ui-muted">
         Documents signed by your key, plus documents published from this browser, including unlisted ones. This browser
-        remembers only ids and labels, never passwords.
+        remembers only ids and labels, never passwords. The list comes from the server and is not signature checked, so open a
+        document to verify it.
       </p>
 
       {status === 'none' && local.length === 0 ? (

@@ -246,7 +246,9 @@ describe('checkAnchor', () => {
     const head = (await verifyPageEntries(page, { channelId: CHANNEL })).entries.at(-1);
     const a = await checkAnchor({ headEntry: head, identities: page.identities, page, channelId: CHANNEL, pin: 'cd'.repeat(32) });
     expect(a.anchored).toBe(false);
-    expect(describeAnchor(a).tone).toBe('warn');
+    // a checkpoint from another key than the pinned one is an alarm, not the yellow note of a missing checkpoint
+    expect(a.pinMismatch).toBe(true);
+    expect(describeAnchor(a).tone).toBe('bad');
   });
 
   it('is not anchored without a checkpoint', async () => {

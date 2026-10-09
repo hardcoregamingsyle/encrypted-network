@@ -245,7 +245,7 @@
 .ui-grid {
   display: grid;
   gap: var(--space-2);
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 52rem) {
@@ -605,6 +605,7 @@
 
 .ui-keybadge {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
   max-width: 100%;
@@ -615,16 +616,29 @@
 }
 
 .ui-keybadge__name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-weight: 650;
 }
 
 .ui-keybadge__id {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--color-text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.ui-keybadge__full {
+  flex-basis: 100%;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  word-break: break-all;
 }
 
 .ui-hash {
@@ -867,4 +881,20 @@
 
 .ui-boundary {
   padding-top: var(--space-4);
+}
+
+/* On narrow screens people tap with a thumb: compact controls get the full 44 px target. */
+@media (max-width: 40rem) {
+  .ui-btn--sm {
+    min-height: var(--tap-size);
+  }
+
+  .ui-toast__close {
+    width: var(--tap-size);
+    height: var(--tap-size);
+  }
+
+  .ui-keybadge__id {
+    min-height: 1.5rem;
+  }
 }

@@ -83,11 +83,11 @@ export default function PublishResult({ result, meta = {}, onDismiss }) {
         </p>
       </Callout>
 
-      <div className="vault-result__password">
+      <div className="vault-result__password" role="group" aria-labelledby="vault-result-pw-label">
         <p className="vault-result__label" id="vault-result-pw-label">
           Password
         </p>
-        <p className="vault-result__pw" aria-labelledby="vault-result-pw-label">
+        <p className="vault-result__pw">
           <code>{result.password}</code>
         </p>
         <div className="ui-row">
@@ -108,7 +108,7 @@ export default function PublishResult({ result, meta = {}, onDismiss }) {
         <Row label="Fingerprint of the original file (SHA-256)" copy={result.fingerprint} describe="fingerprint">
           <HashText value={result.fingerprint} />
         </Row>
-        <Row label="Verify only link (no password)" copy={result.links.verify} describe="verify only link">
+        <Row label="Verify-only link (no password)" copy={result.links.verify} describe="verify-only link">
           <span className="vault-result__link">{result.links.verify}</span>
         </Row>
         <Row label="Full link (contains the password after #k=)" copy={result.links.full} describe="full link">
@@ -117,7 +117,7 @@ export default function PublishResult({ result, meta = {}, onDismiss }) {
       </dl>
 
       <p className="ui-muted">
-        The verify only link shows who signed the document and whether the chain of versions is intact. It cannot open
+        The verify-only link shows who signed the document and whether the chain of versions is intact. It cannot open
         the file. The full link can, so share it only with people who should read the file. The part after # is never
         sent to the server.
       </p>

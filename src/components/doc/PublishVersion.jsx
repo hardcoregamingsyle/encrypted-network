@@ -7,17 +7,26 @@ import { generatePassword } from '../../lib/lockfile.js';
 import { fullLink } from '../../lib/links.js';
 import { publishNewVersion } from '../../lib/publish.js';
 import ProgressList from './ProgressList.jsx';
-import { LABEL_MAX, passwordFileText, versionProblem } from './docLogic.js';
+import { LABEL_MAX, passwordFileText, versionLabel, versionProblem } from './docLogic.js';
 import { saveFile } from './saveFile.js';
 import { useSteps } from './useSteps.js';
 
 function errorText(err) {
+  if (err && (err.status === 409 || err.code === 'conflict')) {
+    return 'Someone else published a newer version, or this page is out of date. Reload to see the latest version, then try again.';
+  }
   return err && err.message ? err.message : 'Something went wrong. Try again.';
+}
+
+function isConflict(err) {
+  return Boolean(err && (err.status === 409 || err.code === 'conflict'));
 }
 
 // Owner tool: lock a new file and publish it as the next version.
 // unlockedWith is the document password once an unlock has been confirmed, else ''.
-export default function PublishVersion({ docId, head, identity, unlockedWith, onPublished }) {
+// previousLabel is the label of the current latest version. An empty label keeps it, the file name is
+// never used as a label because the label is public and the file name is private.
+export default function PublishVersion({ docId, head, identity, unlockedWith, onPublished, previousLabel = '', onReload }) {
   const [file, setFile] = useState(null);
   const [fileKey, setFileKey] = useState(0);
   const [label, setLabel] = useState('');
@@ -26,6 +35,7 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [conflict, setConflict] = useState(false);
   const [done, setDone] = useState(null);
   const [steps, onStep, resetSteps] = useSteps();
 
@@ -40,6 +50,7 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
   function chooseMode(next) {
     setMode(next);
     setSaved(false);
+    resetSteps();
     if (next === 'fresh' && fresh === '') setFresh(generatePassword());
   }
 
@@ -49,6 +60,7 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
     const password = mode === 'fresh' ? fresh : unlockedWith;
     setBusy(true);
     setError('');
+    setConflict(false);
     setDone(null);
     resetSteps();
     try {
@@ -56,7 +68,7 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
         docId,
         head,
         file,
-        label: label.trim() === '' ? undefined : label,
+        label: versionLabel(label, previousLabel),
         identity,
         password,
         onStep
@@ -71,6 +83,7 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
       if (onPublished) await onPublished(password);
     } catch (err) {
       setError(errorText(err));
+      setConflict(isConflict(err));
     } finally {
       setBusy(false);
     }
@@ -91,11 +104,16 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
           <input
             key={fileKey}
             type="file"
-            onChange={(e) => setFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+            onChange={(e) => {
+              setFile(e.target.files && e.target.files[0] ? e.target.files[0] : null);
+              resetSteps();
+              setError('');
+              setConflict(false);
+            }}
             disabled={busy}
           />
         </Field>
-        <Field label="Label" hint={`Optional, up to ${LABEL_MAX} characters. Leave empty to use the file name.`}>
+        <Field label="Label" hint={`Public. Optional, up to ${LABEL_MAX} characters. Leave empty to keep the current label. The file name is never used as a label.`}>
           <input type="text" value={label} onChange={(e) => setLabel(e.target.value)} maxLength={400} disabled={busy} autoComplete="off" />
         </Field>
 
@@ -148,7 +166,14 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
         <ProgressList steps={steps} busy={busy} label="Publish progress" />
         {error ? (
           <Callout tone="bad" title="The new version was not published">
-            {error}
+            <p>{error}</p>
+            {conflict && onReload ? (
+              <p>
+                <Button size="sm" onClick={onReload}>
+                  Reload the document
+                </Button>
+              </p>
+            ) : null}
           </Callout>
         ) : null}
       </form>

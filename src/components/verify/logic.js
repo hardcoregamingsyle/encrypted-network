@@ -174,7 +174,7 @@ export function compareWithHead(localHash, open) {
 //   'same'        unlocked, checked against the signed commitment, and equal to the local file
 //   'different'   unlocked, checked against the signed commitment, and not equal
 //   'unreadable'  could not be downloaded, did not match its signed hash, or did not unlock
-// deps: { getBlob(hash), unlock({ bytes, password }), verifyBlob(bytes, record), verifyPlaintext(parts, record) }
+// deps: { getBlob(hash, { maxBytes }), unlock({ bytes, password }), verifyBlob(bytes, record), verifyPlaintext(parts, record) }
 // shouldStop() lets the caller cancel. onVersion(entry) reports each result as it arrives.
 export async function compareWithOlder({ localHash, records, password, deps, shouldStop, onVersion }) {
   const results = [];
@@ -194,7 +194,7 @@ export async function compareWithOlder({ localHash, records, password, deps, sho
     }
     let entry;
     try {
-      const bytes = await deps.getBlob(rec.blob.hash);
+      const bytes = await deps.getBlob(rec.blob.hash, { maxBytes: rec.blob.size });
       const blobCheck = await deps.verifyBlob(bytes, rec);
       if (!blobCheck.ok) {
         entry = { version: rec.version, state: 'unreadable', detail: 'The stored file does not match its signed hash.' };
@@ -288,10 +288,16 @@ export function parseKeyIdInput(text) {
 //   'no_signing'  pinned, but the server has no signing key
 //   'match'       pinned and the server uses that key
 //   'different'   pinned and the server uses another key
+//   'inconsistent' the server states one key id but sends a public key with another
+// The key id text in the server answer is not used until it was computed from the public key: data.keyChecked
+// must be true (PinSection sets it after hashing data.publicKey). Without it the answer is 'unknown'.
 export function pinStatus(pinned, server) {
   if (!pinned) return 'none';
   if (!server || server.status === 'loading') return 'checking';
   if (server.status !== 'ready' || !server.data) return 'unknown';
-  if (!server.data.signing || typeof server.data.keyId !== 'string' || server.data.keyId === '') return 'no_signing';
+  if (!server.data.signing) return 'no_signing';
+  if (server.data.keyChecked !== true) return 'unknown';
+  if (typeof server.data.keyId !== 'string' || server.data.keyId === '') return 'no_signing';
+  if (server.data.inconsistent === true) return 'inconsistent';
   return server.data.keyId === pinned ? 'match' : 'different';
 }

@@ -6,9 +6,30 @@ import Field from '../Field.jsx';
 import HashText from '../HashText.jsx';
 import Spinner from '../Spinner.jsx';
 import { getServerKey } from '../../lib/api.js';
+import { keyIdOf } from '../../../shared/keys.js';
 import { clearPin, setPinnedServerKeyId } from '../../lib/pin.js';
 import Section from './Section.jsx';
 import { parseKeyIdInput, pinStatus } from './logic.js';
+
+// Returns the server answer with keyId replaced by the id computed from publicKey.
+//   keyChecked   true when the id was computed from a valid public key
+//   inconsistent true when the server stated a different id than the one computed
+async function withCheckedKeyId(raw) {
+  const data = raw && typeof raw === 'object' ? raw : {};
+  if (!data.signing) return { ...data, keyChecked: false };
+  try {
+    const computed = await keyIdOf(data.publicKey);
+    return {
+      ...data,
+      statedKeyId: typeof data.keyId === 'string' ? data.keyId : '',
+      keyId: computed,
+      keyChecked: true,
+      inconsistent: typeof data.keyId === 'string' && data.keyId !== computed
+    };
+  } catch {
+    return { ...data, statedKeyId: typeof data.keyId === 'string' ? data.keyId : '', keyId: '', keyChecked: false };
+  }
+}
 
 // Loads the key this site's server signs with. status: loading, ready or error.
 function useServerKey() {
@@ -19,7 +40,12 @@ function useServerKey() {
     const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     setState({ status: 'loading', data: null, error: '' });
     getServerKey({ signal: ctrl ? ctrl.signal : undefined }).then(
-      (data) => alive && setState({ status: 'ready', data, error: '' }),
+      async (raw) => {
+        // The key id the server states is only text. The id shown and compared is worked out here
+        // from the public key it sends, the same way every signature check does it.
+        const data = await withCheckedKeyId(raw);
+        if (alive) setState({ status: 'ready', data, error: '' });
+      },
       (err) => {
         if (!alive) return;
         const message = err && err.message ? err.message : 'The server key could not be loaded.';
@@ -51,10 +77,22 @@ function StateCallout({ status, pinned, serverKeyId }) {
       </div>
     );
   }
+  if (status === 'inconsistent') {
+    return (
+      <div className="verify-alarm">
+        <Callout tone="bad" title="STOP: the server states one key id but sends another key">
+          <p>
+            The key id this server states about itself does not match the public key it sends. Do not rely on anything
+            from this site until you know why.
+          </p>
+        </Callout>
+      </div>
+    );
+  }
   if (status === 'match') {
     return (
       <Callout tone="good" title="Pinned, and it matches">
-        This site signs with the key you pinned. Checks on this page will fail if that ever changes.
+        The public key this site sends has the key id you pinned. Checks on this page will fail if that ever changes.
       </Callout>
     );
   }

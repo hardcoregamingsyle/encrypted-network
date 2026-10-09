@@ -1,7 +1,8 @@
 // Pure logic for the document page. No DOM and no network, so it can be tested in Node.
 import { isHex } from '../../../shared/encoding.js';
-import { formatBytes, formatTime } from '../../lib/format.js';
+import { formatTime, overLimitText } from '../../lib/format.js';
 import { parseFragment } from '../../lib/links.js';
+import { pinMismatch, serverKeyPinned } from '../../lib/trust.js';
 import { normalizePassword } from '../../lib/lockfile.js';
 
 export const REVOKE_WORD = 'REVOKE';
@@ -162,9 +163,11 @@ export function statusOf(verification) {
   const status = verification && verification.status;
   const ok = verification && verification.ok === true;
   if (status === 'active') {
-    return ok
+    if (!ok) return { key: 'active', label: 'Active, not confirmed', tone: 'warn' };
+    // Green only when the server key was checked against a pin. Anyone can make a server key.
+    return serverKeyPinned(verification)
       ? { key: 'active', label: 'Active', tone: 'good' }
-      : { key: 'active', label: 'Active, not confirmed', tone: 'warn' };
+      : { key: 'active', label: 'Active, server key not pinned', tone: 'warn' };
   }
   if (status === 'revoked') {
     return ok
@@ -220,7 +223,8 @@ export function verdictSentence(verification, { pinned = false, bundle = null } 
     };
   }
   return {
-    tone: 'good',
+    // Green only with a pin that matched. Without one the answer only agrees with itself.
+    tone: pinned && serverKeyPinned(verification) ? 'good' : 'warn',
     text:
       'Checked in this browser: every version is signed by the owner key, the versions link in order' +
       (version === null ? '' : `, and the server confirmed version ${version} as the latest at ${whenText}`) +
@@ -312,11 +316,19 @@ export function ownerAccess({ identity, bundle, verification }) {
   return { isOwner: true, allowed: true, reason: '', head: { version: head.version, recordHash: head.recordHash } };
 }
 
+// The public label of a new version. Empty keeps the label of the current version. The file name is
+// never used: the label is public and the file name is stored only inside the locked file.
+export function versionLabel(label, previousLabel) {
+  const text = typeof label === 'string' ? label.trim() : '';
+  if (text !== '') return text;
+  return typeof previousLabel === 'string' ? previousLabel : '';
+}
+
 // Returns a message when the new version form is not ready, else ''.
 export function versionProblem({ file, label, mode, reusePassword, freshSaved }) {
   if (!file) return 'Choose the new file.';
   if (!Number.isFinite(file.size) || file.size < 1) return 'The file is empty.';
-  if (file.size > MAX_FILE_BYTES) return `The file is too large (${formatBytes(file.size)}). The limit is 50 MiB.`;
+  if (file.size > MAX_FILE_BYTES) return `The file is too large: ${overLimitText(file.size, MAX_FILE_BYTES)}.`;
   if (typeof file.name !== 'string' || file.name.trim() === '') return 'The file has no name.';
   if (codePoints(label) > LABEL_MAX) return `The label is too long (${LABEL_MAX} characters at most).`;
   if (mode === 'fresh') {
@@ -401,7 +413,15 @@ export function passwordFileText(docId, password) {
   ].join('\n');
 }
 
-// Everything the printed certificate shows, as plain data.
+// The big line on the printed report. It says what was checked and whether the server key was pinned.
+function resultLine({ ok, anchored, pinned, revoked }) {
+  if (!ok) return 'DID NOT PASS verification';
+  const what = anchored ? 'Signatures, version chain and server checkpoint passed.' : 'Signatures and version chain passed. The latest version is NOT confirmed by the server.';
+  const key = pinned ? ' Server key pinned and matched.' : ' Server key NOT pinned: the server is not independently identified.';
+  return (revoked ? 'Document revoked by its owner. ' : '') + what + key;
+}
+
+// Everything the printed report shows, as plain data.
 export function certificateData({ bundle, verification, pinnedServerKeyId = '', now = Date.now() }) {
   const doc = bundle && isObject(bundle.document) ? bundle.document : {};
   const head = verification && verification.head ? verification.head : null;
@@ -423,13 +443,16 @@ export function certificateData({ bundle, verification, pinnedServerKeyId = '', 
     signerKeyId: head ? head.signer || '' : '',
     signedAt: head ? head.createdAt : null,
     serverKeyId: server && typeof server.keyId === 'string' ? server.keyId : '',
-    pinned: !!pinnedServerKeyId && !!server && server.keyId === pinnedServerKeyId,
+    // Matches only when the checkpoint check passed against the pin. The key id text in the bundle
+    // is stated by the server itself and proves nothing.
+    pinned: !!pinnedServerKeyId && serverKeyPinned(verification) && !!server && server.keyId === pinnedServerKeyId,
+    pinMismatch: !!pinnedServerKeyId && (pinMismatch(verification) || !server || server.keyId !== pinnedServerKeyId),
     pinnedServerKeyId: pinnedServerKeyId || '',
     ledgerCheckpoint: cp ? { seq: cp.seq, hash: cp.hash, signedAt: cp.signedAt } : null,
     headCheckpoint: hcp ? { seq: hcp.seq, hash: hcp.hash, signedAt: hcp.signedAt } : null,
     anchored: !!verification && verification.anchored === true,
     ok,
-    resultText: ok ? 'Passed all checks' : 'DID NOT PASS verification',
+    resultText: resultLine({ ok, anchored: !!verification && verification.anchored === true, pinned: !!pinnedServerKeyId && serverKeyPinned(verification) && !!server && server.keyId === pinnedServerKeyId, revoked: !!verification && verification.status === 'revoked' }),
     failed,
     checkedAt: now,
     limits: LIMITS_SENTENCE,

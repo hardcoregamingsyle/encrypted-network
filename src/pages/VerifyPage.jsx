@@ -24,7 +24,7 @@ export default function VerifyPage() {
     <div className="ui-container verify-page">
       <PageHeader
         title="Verify"
-        lead="This page needs no account. Nothing here asks you to sign in or create a key, and every check runs in your browser."
+        lead="This page needs no account. Nothing here asks you to sign in or create a key, and every check runs in your browser. The checking code comes from this same site, which is a limit explained at the bottom of the page."
         documentTitle="Verify"
       />
 
@@ -47,7 +47,9 @@ export default function VerifyPage() {
       <p className="ui-muted verify-limits">
         hrdlock is a prototype and has not been audited or certified. A passing check shows that the signatures, links
         and hashes described above are consistent. It does not show that the signer is who they say they are, or that a
-        document is true or legally valid.
+        document is true or legally valid. The checks are run by code that this site sends you. A changed or copied site could send
+        code that reports a pass without checking, and pinning the server key does not protect against that. For records that matter,
+        repeat the checks with a verification program from a source you trust.
       </p>
     </div>
   );

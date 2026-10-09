@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Button from '../components/Button.jsx';
 import Callout from '../components/Callout.jsx';
 import CopyButton from '../components/CopyButton.jsx';
@@ -8,6 +8,7 @@ import PageHeader from '../components/PageHeader.jsx';
 import Spinner from '../components/Spinner.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { formatTime, timeAgo } from '../lib/format.js';
+import { focusIsLost, useToggleFocus } from '../lib/focus.js';
 import { useIdentity } from '../lib/identity.jsx';
 import { MIN_PASSPHRASE_LENGTH, displayNameError, passphraseStrength } from '../lib/keystore.js';
 import '../styles/keys.css';
@@ -149,6 +150,10 @@ function BackupStep({ setup, onDone }) {
   const [downloaded, setDownloaded] = useState(false);
   const [skipping, setSkipping] = useState(false);
   const [understood, setUnderstood] = useState(false);
+  const skipRef = useRef(null);
+  const understoodRef = useRef(null);
+  // Skip and Go back swap the control that was pressed: keep focus inside the part that changed.
+  useToggleFocus(skipping, understoodRef, skipRef);
 
   function onDownload() {
     downloadText(setup.backupName, setup.backupText);
@@ -194,7 +199,7 @@ function BackupStep({ setup, onDone }) {
               stay public, but you could never update or revoke them.
             </p>
             <label className="ui-check">
-              <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
+              <input ref={understoodRef} type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
               <span>I understand and I want to skip the backup.</span>
             </label>
             <div className="ui-row">
@@ -208,7 +213,7 @@ function BackupStep({ setup, onDone }) {
           </Callout>
         ) : (
           <div className="ui-row">
-            <Button variant="ghost" onClick={() => setSkipping(true)}>
+            <Button ref={skipRef} variant="ghost" onClick={() => setSkipping(true)}>
               Skip the backup
             </Button>
           </div>
@@ -321,6 +326,9 @@ function FreshBackup() {
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const passRef = useRef(null);
+  const openRef = useRef(null);
+  useToggleFocus(open, passRef, openRef);
 
   async function onSubmit(event) {
     event.preventDefault();
@@ -346,14 +354,14 @@ function FreshBackup() {
   if (!open) {
     return (
       <div className="ui-row">
-        <Button onClick={() => setOpen(true)}>Download a fresh backup</Button>
+        <Button ref={openRef} onClick={() => setOpen(true)}>Download a fresh backup</Button>
       </div>
     );
   }
   return (
     <form className="ui-stack" onSubmit={onSubmit} noValidate>
       <Field label="Backup passphrase" hint="The passphrase you chose when you created or restored this identity." error={error}>
-        <input type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="current-password" />
+        <input ref={passRef} type="password" value={pass} onChange={(e) => setPass(e.target.value)} autoComplete="current-password" />
       </Field>
       {busy ? (
         <p className="ui-muted" role="status">
@@ -381,6 +389,9 @@ function ForgetIdentity() {
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const typedRef = useRef(null);
+  const openRef = useRef(null);
+  useToggleFocus(open, typedRef, openRef);
   const matches = typed.trim().toLowerCase() === FORGET_WORD;
 
   async function onSubmit(event) {
@@ -400,7 +411,7 @@ function ForgetIdentity() {
   if (!open) {
     return (
       <div className="ui-row">
-        <Button variant="danger" onClick={() => setOpen(true)}>
+        <Button ref={openRef} variant="danger" onClick={() => setOpen(true)}>
           Forget this identity
         </Button>
       </div>
@@ -414,6 +425,7 @@ function ForgetIdentity() {
       </Callout>
       <Field label={`Type "${FORGET_WORD}" to confirm`} error={error}>
         <input
+          ref={typedRef}
           type="text"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}
@@ -528,6 +540,23 @@ export default function KeysPage() {
   const [setup, setSetup] = useState(null);
   const [creating, setCreating] = useState(false);
 
+  const bodyRef = useRef(null);
+  const view = status === 'loading' ? 'loading' : setup && status === 'ready' && !creating ? 'backup' : status === 'ready' && !creating ? 'ready' : 'forms';
+  const lastView = useRef(view);
+  // Create swaps the form for the backup step, finishing swaps that for the identity view: the control
+  // that had focus is gone each time, so focus goes to the heading of what appeared.
+  useEffect(() => {
+    const before = lastView.current;
+    lastView.current = view;
+    if (before === view || before === 'loading' || view === 'loading') return;
+    const root = bodyRef.current;
+    const heading = root ? root.querySelector('h2') : null;
+    if (heading && focusIsLost()) {
+      heading.setAttribute('tabindex', '-1');
+      heading.focus({ preventScroll: true });
+    }
+  }, [view]);
+
   let body;
   if (status === 'loading') {
     body = (
@@ -562,7 +591,7 @@ export default function KeysPage() {
         lead="Your signing identity is a key pair made in this browser. Everything you publish or post is signed with it, and your key id, the hash of the public key, is how others recognise you."
         documentTitle="Identity"
       />
-      {body}
+      <div ref={bodyRef}>{body}</div>
     </div>
   );
 }

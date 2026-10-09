@@ -26,7 +26,11 @@ export default function UnlockPanel({ result, verified, revoked, password, onPas
 
   function onSubmit(event) {
     event.preventDefault();
-    if (!busy) onUnlock();
+    if (busy) return;
+    // A full link typed or filled in by the browser is reduced to its password here, not only on paste.
+    const clean = tidyPassword(password);
+    if (clean !== password) onPassword(clean);
+    onUnlock(clean);
   }
 
   function download() {
@@ -112,8 +116,9 @@ export default function UnlockPanel({ result, verified, revoked, password, onPas
             </Callout>
           )}
           <div className="ui-row">
-            <Button variant="primary" onClick={download}>
-              <Icon name="download" size={18} /> {`Download ${safeFileName(file.name)}`}
+            <Button variant={verified ? 'primary' : 'ghost'} onClick={download}>
+              <Icon name="download" size={18} />{' '}
+              {verified ? `Download ${safeFileName(file.name)}` : `Download anyway, not verified: ${safeFileName(file.name)}`}
             </Button>
             <span className="ui-muted">{formatBytes(file.data.length)}</span>
           </div>

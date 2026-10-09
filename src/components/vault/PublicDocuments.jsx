@@ -2,6 +2,7 @@ import { useId, useState } from 'react';
 import Button from '../Button.jsx';
 import { DocListBody } from './DocList.jsx';
 import useDocumentList, { useDebounced } from './useDocumentList.js';
+import { textOf } from '../../lib/format.js';
 import { PAGE_SIZE, SEARCH_DELAY_MS, SEARCH_MAX, normalizeQuery } from './vaultLogic.js';
 
 function rowOf(d) {
@@ -12,8 +13,9 @@ function rowOf(d) {
     version: Number.isFinite(d.headVersion) ? d.headVersion : null,
     updatedAt: Number.isFinite(d.updatedAt) ? d.updatedAt : null,
     approxTime: false,
-    ownerKeyId: d.ownerKeyId,
-    ownerName: d.ownerName,
+    // every field comes from the server, so odd types are turned into text before they are shown
+    ownerKeyId: textOf(d.ownerKeyId),
+    ownerName: textOf(d.ownerName),
     listed: false,
     local: false
   };

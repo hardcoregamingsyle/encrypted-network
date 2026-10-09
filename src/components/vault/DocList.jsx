@@ -83,7 +83,7 @@ export function DocRow({ doc, showOwner = false, onForget }) {
         ) : null}
       </div>
       {onForget && doc.local ? (
-        <Button size="sm" variant="ghost" onClick={() => onForget(doc.docId)} aria-label={`Remove ${displayLabel(doc.label)} from this list`}>
+        <Button size="sm" variant="ghost" onClick={() => onForget(doc.docId)} aria-label={`Remove from list: ${displayLabel(doc.label)}`}>
           Remove from list
         </Button>
       ) : null}

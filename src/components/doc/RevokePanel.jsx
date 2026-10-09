@@ -3,6 +3,7 @@ import Button from '../Button.jsx';
 import Callout from '../Callout.jsx';
 import Field from '../Field.jsx';
 import { revokeDocument } from '../../lib/publish.js';
+import { useToast } from '../Toast.jsx';
 import ProgressList from './ProgressList.jsx';
 import { REASON_MAX, REVOKE_WORD, revokeProblem } from './docLogic.js';
 import { useSteps } from './useSteps.js';
@@ -13,6 +14,7 @@ function errorText(err) {
 
 // Owner tool: end the document for good.
 export default function RevokePanel({ docId, head, identity, onRevoked }) {
+  const toast = useToast();
   const [reason, setReason] = useState('');
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,6 +31,9 @@ export default function RevokePanel({ docId, head, identity, onRevoked }) {
     resetSteps();
     try {
       await revokeDocument({ docId, head, reason: reason.trim(), identity, onStep });
+      // This panel is removed once the page reloads (a revoked document has no owner tools), so the
+      // result is announced through the toast area, which stays.
+      toast.push({ tone: 'good', text: 'The document was revoked. The signed entry is public and no new version can follow it.' });
       if (onRevoked) await onRevoked();
     } catch (err) {
       setError(errorText(err));

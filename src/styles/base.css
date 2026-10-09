@@ -180,7 +180,7 @@ textarea {
 input::placeholder,
 textarea::placeholder {
   color: var(--color-text-muted);
-  opacity: 0.8;
+  opacity: 1;
 }
 
 input:not([type='checkbox']):not([type='radio']):hover,
@@ -237,6 +237,19 @@ textarea:disabled {
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+/* The rule for input[type='file'] is more specific than .ui-sr-only. Without this the hidden file input
+   is as wide as the page and makes the page wider than a phone screen. */
+input[type='file'].ui-sr-only {
+  position: absolute;
+  display: inline;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
