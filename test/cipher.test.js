@@ -29,8 +29,20 @@ async function main() {
     const back = await HRD.unlock(locked, password);
     assert.strictEqual(back.name, 'test file ' + size + '.bin');
     assert.deepStrictEqual(Buffer.from(back.data), Buffer.from(data));
+
+    // the fingerprint is the normal SHA-256 of the real file
+    const expected = require('crypto').createHash('sha256').update(data).digest('hex');
+    assert.strictEqual(back.fingerprint, expected);
+    assert.strictEqual(await HRD.fingerprint(data), expected);
   }
   console.log('round trip ok');
+  console.log('fingerprints ok');
+
+  // a file from the old format (HRDLOCK1) is refused
+  const old = await HRD.lock(new Uint8Array([9]), 'old.bin', password);
+  old[7] = 49;
+  await assert.rejects(HRD.unlock(old, password), /not a hrdlock file/);
+  console.log('old format refused');
 
   // password typed in lower case without dashes still works
   const small = await HRD.lock(new Uint8Array([1, 2, 3]), 'a.txt', password);

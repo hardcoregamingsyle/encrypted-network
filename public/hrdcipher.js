@@ -12,6 +12,9 @@
 //     shuffled s-box together with the byte before it (so one changed
 //     byte changes everything after it)
 //  4. a check code (HMAC) goes on the end so a wrong password is caught
+//     before anything is decrypted, and so is any changed bit
+//  5. the SHA-256 fingerprint of the real file is locked inside too, so
+//     after unlocking the file can be checked against what was uploaded
 //
 // This is a learning project. The cipher is not reviewed by anyone,
 // do not use it to hide anything that really matters.
@@ -22,7 +25,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  var MAGIC = [72, 82, 68, 76, 79, 67, 75, 49]; // HRDLOCK1
+  var MAGIC = [72, 82, 68, 76, 79, 67, 75, 50]; // HRDLOCK2
   var ITERATIONS = 150000;
   var HEADER_LEN = 8 + 4 + 16 + 12;
   var MAC_LEN = 32;
@@ -183,6 +186,22 @@
     return diff === 0;
   }
 
+  // ---------- fingerprints ----------
+
+  async function digest(bytes) {
+    return new Uint8Array(await subtle.digest('SHA-256', bytes));
+  }
+
+  function toHex(bytes) {
+    var out = '';
+    for (var i = 0; i < bytes.length; i++) out += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+    return out;
+  }
+
+  async function fingerprint(bytes) {
+    return toHex(await digest(bytes));
+  }
+
   // ---------- public functions ----------
 
   function generatePassword() {
@@ -199,11 +218,14 @@
     var nameBytes = new TextEncoder().encode(name);
     if (nameBytes.length > 65535) throw new Error('file name is too long');
 
-    var payload = new Uint8Array(2 + nameBytes.length + data.length);
+    // inside the lock: name length, name, fingerprint of the file, the file
+    var hash = await digest(data);
+    var payload = new Uint8Array(2 + nameBytes.length + 32 + data.length);
     payload[0] = nameBytes.length >>> 8;
     payload[1] = nameBytes.length & 255;
     payload.set(nameBytes, 2);
-    payload.set(data, 2 + nameBytes.length);
+    payload.set(hash, 2 + nameBytes.length);
+    payload.set(data, 2 + nameBytes.length + 32);
 
     var salt = crypto.getRandomValues(new Uint8Array(16));
     var nonce = crypto.getRandomValues(new Uint8Array(12));
@@ -223,7 +245,7 @@
   }
 
   async function unlock(locked, password) {
-    if (locked.length < HEADER_LEN + MAC_LEN + 2) throw new Error('this is not a hrdlock file');
+    if (locked.length < HEADER_LEN + MAC_LEN + 2 + 32) throw new Error('this is not a hrdlock file');
     for (var i = 0; i < MAGIC.length; i++) {
       if (locked[i] !== MAGIC[i]) throw new Error('this is not a hrdlock file');
     }
@@ -242,12 +264,25 @@
     var sb = buildSbox(keys.box);
     var payload = crypt(locked.slice(HEADER_LEN, bodyEnd), keys.enc, nonce, sb, false);
     var nameLen = (payload[0] << 8) | payload[1];
-    if (2 + nameLen > payload.length) throw new Error('file is damaged');
+    if (2 + nameLen + 32 > payload.length) throw new Error('file is damaged');
+    var stored = payload.subarray(2 + nameLen, 2 + nameLen + 32);
+    var data = payload.subarray(2 + nameLen + 32);
+
+    // the file that came out must match the fingerprint that went in
+    var now = await digest(data);
+    if (!sameBytes(now, stored)) throw new Error('the unlocked file does not match its fingerprint');
     return {
       name: new TextDecoder().decode(payload.subarray(2, 2 + nameLen)),
-      data: payload.subarray(2 + nameLen)
+      data: data,
+      fingerprint: toHex(stored)
     };
   }
 
-  return { lock: lock, unlock: unlock, generatePassword: generatePassword, MAGIC: MAGIC };
+  return {
+    lock: lock,
+    unlock: unlock,
+    fingerprint: fingerprint,
+    generatePassword: generatePassword,
+    MAGIC: MAGIC
+  };
 });

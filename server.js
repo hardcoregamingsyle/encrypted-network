@@ -16,7 +16,7 @@ const MAX_UPLOAD = 50 * 1024 * 1024;
 const MAX_TOTAL = 1024 * 1024 * 1024;
 const RATE_COUNT = 20;
 const RATE_WINDOW = 10 * 60 * 1000;
-const MAGIC = Buffer.from('HRDLOCK1');
+const MAGIC = Buffer.from('HRDLOCK2');
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
