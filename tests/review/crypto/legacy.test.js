@@ -1,4 +1,4 @@
-// Review: does src/lib/hrd.js still behave exactly like legacy/public/hrdcipher.js?
+// Review: does src/lib/hrd.js still behave exactly like the first version of the cipher (tests/fixtures/old-hrdcipher.js)?
 // The legacy file only exports lock/unlock, so its source is loaded with the
 // internals exposed and run unchanged.
 import { describe, it, expect } from 'vitest';
@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildSbox, crypt, makeBlock, toWords, rotl, hrdEncrypt, hrdDecrypt } from '../../../src/lib/hrd.js';
 
-const legacyPath = fileURLToPath(new URL('../../../legacy/public/hrdcipher.js', import.meta.url));
+const legacyPath = fileURLToPath(new URL('../../fixtures/old-hrdcipher.js', import.meta.url));
 
 function loadLegacy() {
   let src = readFileSync(legacyPath, 'utf8');

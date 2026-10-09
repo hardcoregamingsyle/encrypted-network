@@ -171,5 +171,5 @@ describe('hrd helpers', () => {
   });
 });
 
-// sha256 of the output, taken from the legacy cipher (legacy/public/hrdcipher.js) for the same inputs
+// sha256 of the output, taken from the first version of the cipher (tests/fixtures/old-hrdcipher.js) for the same inputs
 const KNOWN_DIGEST = '3c0bf297a773b3d4584adde3fb3ebe2b8a121cfd1dd07674e3cd7c33a92ea5b0';
