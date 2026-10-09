@@ -1,11 +1,28 @@
 {
   "name": "hrdlock",
-  "version": "0.1.0",
-  "description": "small file locker with a homemade cipher",
-  "main": "server.js",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "signed document and file system with a chat network, runs on Cloudflare Pages",
   "scripts": {
-    "start": "node server.js",
-    "test": "node test/cipher.test.js && node test/server.test.js"
+    "dev:web": "vite",
+    "dev:api": "wrangler pages dev --proxy 5173 --port 8788 --d1 DB --r2 FILES",
+    "build": "vite build",
+    "preview": "vite build && wrangler pages dev dist --port 8788 --d1 DB --r2 FILES",
+    "setup": "node scripts/setup-dev.mjs",
+    "db:local": "wrangler d1 migrations apply DB --local",
+    "test": "vitest run"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.149.0"
+  }
 }
