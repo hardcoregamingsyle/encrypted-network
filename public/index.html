@@ -42,9 +42,13 @@
         <h3>Your password</h3>
         <p class="small">It is shown only once. Without it the file cannot be opened again.</p>
         <code id="pw" class="pw"></code>
+        <h3 class="fphead">Fingerprint of your file</h3>
+        <p class="small">Keep this too. It lets you check later that a file is exactly the one you locked.</p>
+        <code id="fp" class="pw fp"></code>
         <div class="btns">
-          <button id="copyBtn" class="btn">Copy</button>
-          <button id="saveBtn" class="btn ghost">Save as text file</button>
+          <button id="copyBtn" class="btn">Copy password</button>
+          <button id="copyFpBtn" class="btn">Copy fingerprint</button>
+          <button id="saveBtn" class="btn ghost">Save both as text file</button>
         </div>
         <p id="storedAs" class="small"></p>
       </div>
@@ -63,6 +67,19 @@
       </div>
       <p id="listStatus" class="status" role="status"></p>
       <ul id="files" class="files"></ul>
+    </section>
+
+    <section class="card full">
+      <h2>Check a file</h2>
+      <p class="small">Pick a file you downloaded and paste the fingerprint you saved when you locked it. If they match, the file is exactly the one you uploaded, not one byte different.</p>
+      <div class="checkrow">
+        <input type="file" id="checkPick" class="sr">
+        <label for="checkPick" class="btn ghost" id="checkLabel">Choose file</label>
+        <input type="text" id="checkFp" class="pwin" placeholder="fingerprint (64 letters and numbers)" autocomplete="off" spellcheck="false" aria-label="Fingerprint">
+        <button id="checkBtn" class="btn primary">Check</button>
+      </div>
+      <p id="checkStatus" class="status" role="status"></p>
+      <code id="checkOut" class="pw fp" hidden></code>
     </section>
   </main>
 

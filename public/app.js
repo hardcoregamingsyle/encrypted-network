@@ -11,6 +11,8 @@ const result = $('result');
 const pwBox = $('pw');
 const copyBtn = $('copyBtn');
 const saveBtn = $('saveBtn');
+const fpBox = $('fp');
+const copyFpBtn = $('copyFpBtn');
 const storedAs = $('storedAs');
 const listStatus = $('listStatus');
 const fileList = $('files');
@@ -38,6 +40,11 @@ function ago(iso) {
   if (s < 3600) return Math.floor(s / 60) + ' min ago';
   if (s < 86400) return Math.floor(s / 3600) + ' h ago';
   return new Date(iso).toLocaleDateString();
+}
+
+// fingerprints are easier to read in groups of 8
+function spaced(hex) {
+  return hex.match(/.{1,8}/g).join(' ');
 }
 
 function saveToDisk(bytes, name) {
@@ -97,7 +104,12 @@ try {
 async function runJob(job) {
   if (!worker) {
     // no worker available, do it on the page instead
-    if (job.op === 'lock') return { data: await HRD.lock(job.data, job.name, job.password) };
+    if (job.op === 'lock') {
+      return {
+        data: await HRD.lock(job.data, job.name, job.password),
+        fingerprint: await HRD.fingerprint(job.data)
+      };
+    }
     return HRD.unlock(job.data, job.password);
   }
   return new Promise((resolve, reject) => {
@@ -110,6 +122,7 @@ async function runJob(job) {
 if (!window.isSecureContext || !window.crypto || !crypto.subtle) {
   $('warn').hidden = false;
   lockBtn.disabled = true;
+  $('checkBtn').disabled = true;
 }
 
 // ---------- picking a file ----------
@@ -149,7 +162,8 @@ lockBtn.addEventListener('click', async () => {
     say(lockStatus, 'Locking...');
     const data = new Uint8Array(await file.arrayBuffer());
     const password = HRD.generatePassword();
-    const locked = (await runJob({ op: 'lock', data, name: file.name, password })).data;
+    const done = await runJob({ op: 'lock', data, name: file.name, password });
+    const locked = done.data;
 
     say(lockStatus, 'Uploading...');
     const res = await fetch('/api/files', {
@@ -162,6 +176,8 @@ lockBtn.addEventListener('click', async () => {
     setToken(info.name, info.token);
 
     pwBox.textContent = password;
+    fpBox.textContent = spaced(done.fingerprint);
+    result.dataset.fp = done.fingerprint;
     storedAs.textContent = 'Saved as ' + info.name;
     result.dataset.file = info.name;
     result.hidden = false;
@@ -175,18 +191,24 @@ lockBtn.addEventListener('click', async () => {
   lockBtn.disabled = false;
 });
 
-copyBtn.addEventListener('click', async () => {
+async function copyText(btn, text) {
+  const label = btn.textContent;
   try {
-    await navigator.clipboard.writeText(pwBox.textContent);
-    copyBtn.textContent = 'Copied';
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied';
   } catch (e) {
-    copyBtn.textContent = 'Select it by hand';
+    btn.textContent = 'Select it by hand';
   }
-  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-});
+  setTimeout(() => { btn.textContent = label; }, 1500);
+}
+
+copyBtn.addEventListener('click', () => copyText(copyBtn, pwBox.textContent));
+copyFpBtn.addEventListener('click', () => copyText(copyFpBtn, result.dataset.fp));
 
 saveBtn.addEventListener('click', () => {
-  const text = 'hrdlock password\r\nfile: ' + result.dataset.file + '\r\npassword: ' + pwBox.textContent + '\r\n';
+  const text = 'hrdlock\r\nfile: ' + result.dataset.file +
+    '\r\npassword: ' + pwBox.textContent +
+    '\r\nfingerprint (SHA-256): ' + result.dataset.fp + '\r\n';
   saveToDisk(new TextEncoder().encode(text), result.dataset.file + '.password.txt');
 });
 
@@ -296,7 +318,8 @@ function makeRow(f) {
       say(msg, 'Unlocking...');
       const out = await runJob({ op: 'unlock', data: locked, password: input.value });
       saveToDisk(out.data, out.name);
-      say(msg, 'Downloaded ' + out.name, 'good');
+      say(msg, 'Downloaded ' + out.name + '. Checked, it matches the fingerprint locked inside (starts ' +
+        out.fingerprint.slice(0, 12) + ').', 'good');
       input.value = '';
     } catch (e) {
       say(msg, e.message, 'bad');
@@ -361,5 +384,41 @@ async function fetchLocked(name) {
   if (!res.ok) throw new Error('could not get the file');
   return new Uint8Array(await res.arrayBuffer());
 }
+
+// ---------- check a file ----------
+
+const checkPick = $('checkPick');
+const checkFp = $('checkFp');
+const checkBtn = $('checkBtn');
+const checkStatus = $('checkStatus');
+const checkOut = $('checkOut');
+
+checkPick.addEventListener('change', () => {
+  $('checkLabel').textContent = checkPick.files[0] ? checkPick.files[0].name : 'Choose file';
+});
+
+checkBtn.addEventListener('click', async () => {
+  const file = checkPick.files[0];
+  checkOut.hidden = true;
+  if (!file) return say(checkStatus, 'Choose a file first.', 'bad');
+  const wanted = checkFp.value.replace(/\s/g, '').toLowerCase();
+  if (wanted && !/^[0-9a-f]{64}$/.test(wanted)) {
+    return say(checkStatus, 'That does not look like a fingerprint. It is 64 letters and numbers.', 'bad');
+  }
+
+  checkBtn.disabled = true;
+  try {
+    say(checkStatus, 'Reading the file...');
+    const got = await HRD.fingerprint(new Uint8Array(await file.arrayBuffer()));
+    checkOut.textContent = spaced(got);
+    checkOut.hidden = false;
+    if (!wanted) say(checkStatus, 'This is the fingerprint of that file. Paste a saved one above to compare.');
+    else if (got === wanted) say(checkStatus, 'Match. This is exactly the file that was locked.', 'good');
+    else say(checkStatus, 'No match. This file is not the same as the one that was locked.', 'bad');
+  } catch (e) {
+    say(checkStatus, e.message, 'bad');
+  }
+  checkBtn.disabled = false;
+});
 
 loadList();

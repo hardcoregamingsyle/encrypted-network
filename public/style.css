@@ -114,7 +114,7 @@ h3 { margin: 0 0 2px; font-size: 15px; }
 .btn:hover { border-color: var(--accent); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.5; cursor: default; }
-.btn:focus-visible, input:focus-visible, .sr:focus-visible + .drop {
+.btn:focus-visible, input:focus-visible, .sr:focus-visible + .drop, .sr:focus-visible + label.btn {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -171,6 +171,16 @@ h3 { margin: 0 0 2px; font-size: 15px; }
   user-select: all;
 }
 .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.fphead { margin-top: 14px; }
+.pw.fp { font-size: 12px; letter-spacing: 0.5px; text-align: left; line-height: 1.6; }
+
+/* ---------- check a file ---------- */
+
+.card.full { grid-column: 1 / -1; }
+.checkrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.checkrow label.btn { display: inline-block; }
+.checkrow input.pwin { flex: 1 1 260px; }
+.card.full .pw[hidden] { display: none; }
 
 .steps { margin: 18px 0 0; padding-left: 20px; font-size: 13px; color: var(--muted); }
 
