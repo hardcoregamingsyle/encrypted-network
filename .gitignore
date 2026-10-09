@@ -1,4 +1,7 @@
-cloud/
 node_modules/
+dist/
+.wrangler/
+.dev.vars
+cloud/
 *.log
 hacktime.py
