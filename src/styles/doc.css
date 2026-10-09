@@ -1,0 +1,357 @@
+/* Document page. Class names start with doc-. */
+
+.doc-layout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: var(--content-width);
+}
+
+.doc-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.doc-block__title {
+  font-size: var(--text-xl);
+}
+
+.doc-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.doc-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+}
+
+.doc-card--danger {
+  border-color: var(--color-bad-border);
+}
+
+.doc-loading {
+  align-items: center;
+  min-height: 12rem;
+  justify-content: center;
+}
+
+.doc-verdict {
+  padding: var(--space-2);
+  border-left: 4px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  line-height: var(--leading-body);
+}
+
+.doc-verdict--good {
+  border-left-color: var(--color-good);
+}
+
+.doc-verdict--warn {
+  border-left-color: var(--color-warn);
+}
+
+.doc-verdict--bad {
+  border-left-color: var(--color-bad);
+}
+
+.doc-reason {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+  overflow-wrap: anywhere;
+}
+
+.doc-hint {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+  font-size: var(--text-sm);
+}
+
+.doc-hint a {
+  color: inherit;
+  font-weight: 650;
+}
+
+.doc-subline {
+  margin-top: var(--space-0);
+  font-size: var(--text-sm);
+}
+
+.doc-label {
+  font-weight: 650;
+}
+
+.doc-linkline {
+  margin: var(--space-0) 0 0;
+  overflow-wrap: anywhere;
+}
+
+.doc-empty {
+  padding: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.doc-owner-note {
+  padding: 0 var(--space-1);
+}
+
+.doc-password {
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+.doc-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.doc-fieldset legend {
+  padding: 0 var(--space-0);
+  font-weight: 650;
+}
+
+.doc-option-hint {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.doc-secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px dashed var(--color-warn-border);
+  border-radius: var(--radius-md);
+  background: var(--color-warn-bg);
+}
+
+.doc-secret__title {
+  color: var(--color-warn);
+  font-weight: 650;
+}
+
+.doc-secret__value {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* progress list */
+
+.doc-progress {
+  min-height: 0;
+}
+
+.doc-progress__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.doc-progress__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.doc-progress__list .is-done {
+  color: var(--color-text-muted);
+}
+
+.doc-progress__mark {
+  display: inline-flex;
+  width: 1.25rem;
+  justify-content: center;
+}
+
+/* unlock checklist */
+
+.doc-steplist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-steplist__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.doc-steplist__mark {
+  display: inline-flex;
+  flex: none;
+  margin-top: 0.1rem;
+  color: var(--color-text-muted);
+}
+
+.doc-steplist__item.is-ok {
+  border-color: var(--color-good-border);
+  background: var(--color-good-bg);
+}
+
+.doc-steplist__item.is-ok .doc-steplist__mark {
+  color: var(--color-good);
+}
+
+.doc-steplist__item.is-bad {
+  border-color: var(--color-bad-border);
+  background: var(--color-bad-bg);
+}
+
+.doc-steplist__item.is-bad .doc-steplist__mark {
+  color: var(--color-bad);
+}
+
+.doc-steplist__item.is-todo,
+.doc-steplist__item.is-skip {
+  color: var(--color-text-muted);
+}
+
+.doc-steplist__name {
+  margin: 0;
+  font-weight: 650;
+}
+
+.doc-steplist__detail {
+  margin: var(--space-0) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.doc-download {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* timeline */
+
+.doc-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-version {
+  position: relative;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+
+.doc-version[data-type='doc.revoke'] {
+  border-color: var(--color-bad-border);
+}
+
+.doc-version__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.doc-version__no {
+  font-size: var(--text-lg);
+  font-weight: 700;
+}
+
+/* certificate: hidden on screen, shown when printing */
+
+.doc-cert {
+  display: none;
+}
+
+@media print {
+  .doc-screen {
+    display: none !important;
+  }
+
+  .doc-cert {
+    display: block;
+    color: #000000;
+  }
+
+  .doc-cert__title {
+    margin: 0 0 12pt;
+    font-size: 20pt;
+  }
+
+  .doc-cert__result {
+    margin: 0 0 12pt;
+    padding: 8pt;
+    border: 2pt solid #000000;
+    font-size: 14pt;
+    font-weight: 700;
+  }
+
+  .doc-cert__list {
+    margin: 0;
+  }
+
+  .doc-cert__row {
+    display: grid;
+    grid-template-columns: 38mm 1fr;
+    gap: 6pt;
+    padding: 4pt 0;
+    border-bottom: 0.5pt solid #999999;
+    break-inside: avoid;
+  }
+
+  .doc-cert__row dt {
+    font-weight: 700;
+  }
+
+  .doc-cert__row dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 9pt;
+    overflow-wrap: anywhere;
+  }
+
+  .doc-cert__block {
+    margin-top: 12pt;
+    break-inside: avoid;
+  }
+
+  .doc-cert__heading {
+    font-weight: 700;
+  }
+}
