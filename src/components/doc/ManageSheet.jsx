@@ -3,6 +3,7 @@ import Button from '../Button.jsx';
 import Icon from '../Icon.jsx';
 import Sheet from '../Sheet.jsx';
 import PublishVersion from './PublishVersion.jsx';
+import ViewableSwitch from './ViewableSwitch.jsx';
 import RevokePanel from './RevokePanel.jsx';
 
 const TITLES = { menu: 'Manage this file', update: 'Update file', withdraw: 'Withdraw file' };
@@ -61,6 +62,9 @@ export default function ManageSheet({ open, onClose, docId, head, identity, pass
       <div className="doc-manage" ref={bodyRef} tabIndex={-1}>
       {view === 'menu' ? (
         <ul className="doc-choices">
+          <li>
+            <ViewableSwitch docId={docId} password={password} />
+          </li>
           <Choice icon="upload" title="Update file" sub="Publish a new version. The same link keeps working." onClick={() => setView('update')} />
           <Choice icon="x" tone="danger" title="Withdraw file" sub="Stop sharing it. The history stays visible." onClick={() => setView('withdraw')} />
           <Choice icon="info" title="Details" sub="The technical checks." onClick={onDetails} />
