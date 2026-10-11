@@ -313,6 +313,42 @@ export function getSecret(docId, opts) {
   return requestJson(`/api/me/secrets/${enc(docId)}`, opts);
 }
 
+// -> { check: <64 hex> | null }, the fingerprint of the files password (see src/lib/filesPassword.js)
+export function getFilesCheck(opts) {
+  return requestJson('/api/me/files-check', opts);
+}
+
+// Sets it once, 409 when it is already set.
+export function putFilesCheck(check) {
+  return requestJson('/api/me/files-check', { method: 'PUT', body: { check } });
+}
+
+// Private files: only the signed in account can read them. -> { files: [{ id, label, size, createdAt }] }
+export function listPrivateFiles(opts) {
+  return requestJson('/api/me/files', opts);
+}
+
+// -> { id, size }. bytes is the locked file, signature is the owner's signature of the blob.put record
+// { v: 2, type: 'blob.put', hash, size, signer, createdAt } for those bytes.
+export async function putPrivateFile({ bytes, label, hash, signer, createdAt, signature }) {
+  const headers = { accept: 'application/json', 'content-type': 'application/octet-stream', 'x-file-label': enc(label) };
+  Object.assign(headers, { 'x-blob-sha256': hash, 'x-hrd-key': signer, 'x-hrd-time': String(createdAt), 'x-hrd-sig': signature });
+  return parseJson(await send('/api/me/files', { method: 'POST', headers, body: bytes }));
+}
+
+// The locked bytes of one private file with what the owner signed at upload.
+// -> { bytes, hash, signer, createdAt, signature }. Nothing is checked here (see components/files/openPrivate.js).
+export async function getPrivateFile(id, { signal } = {}) {
+  const response = await send(`/api/me/files/${enc(id)}`, { signal });
+  const head = (name) => response.headers.get(name) || '';
+  const bytes = await readLimited(response, MAX_BLOB_BYTES);
+  return { bytes, hash: head('x-blob-sha256'), signer: head('x-hrd-key'), createdAt: Number(head('x-hrd-time')), signature: head('x-hrd-sig') };
+}
+
+export function deletePrivateFile(id) {
+  return requestJson(`/api/me/files/${enc(id)}`, { method: 'DELETE' });
+}
+
 // Strict mode. Always needs a session made in the last 15 minutes (401 reauth_required).
 //   postStrict(false)                     -> { strict: false, passwords: [] }
 //   postStrict(true [, { after }])        -> { strict: true, passwords: [{ docId, password }] (at most 100), next: docId | null, unreadable? }
