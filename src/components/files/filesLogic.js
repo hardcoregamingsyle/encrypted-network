@@ -4,12 +4,13 @@ import { getSeenHead } from '../../lib/headStore.js';
 
 export const TABS = Object.freeze([
   { id: 'mine', label: 'Mine' },
-  { id: 'public', label: 'Public' }
+  { id: 'public', label: 'Public' },
+  { id: 'private', label: 'Private' }
 ]);
 
-// The tab comes from the address (?tab=public). Anything else is Mine.
+// The tab comes from the address (?tab=public or ?tab=private). Anything else is Mine.
 export function tabFromSearch(value) {
-  return value === 'public' ? 'public' : 'mine';
+  return value === 'public' || value === 'private' ? value : 'mine';
 }
 
 export const UNTITLED = 'Untitled file';
