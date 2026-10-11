@@ -4,7 +4,8 @@ import { shortKeyId } from '../lib/format.js';
 // A signer: the name they chose and the start of their key id (16 of 64 hex characters).
 // The tag is a button: one press shows the whole key id, which is the real identifier.
 // Names are not unique, so the name alone never identifies anyone.
-export default function KeyBadge({ keyId, name }) {
+// plain: show the whole key id as text and no button (used where it sits inside a closed Details).
+export default function KeyBadge({ keyId, name, plain = false }) {
   const [open, setOpen] = useState(false);
   const tag = shortKeyId(keyId);
   const full = typeof keyId === 'string' ? keyId : '';
@@ -12,7 +13,8 @@ export default function KeyBadge({ keyId, name }) {
   return (
     <span className="ui-keybadge" title={title}>
       {name ? <span className="ui-keybadge__name">{name}</span> : null}
-      {tag ? (
+      {tag && plain ? <span className="ui-keybadge__id">{full}</span> : null}
+      {tag && !plain ? (
         <button
           type="button"
           className="ui-keybadge__id"

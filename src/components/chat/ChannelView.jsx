@@ -1,27 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useSignInPrompt } from '../AuthPrompt.jsx';
+import Avatar from '../Avatar.jsx';
 import Button from '../Button.jsx';
 import Callout from '../Callout.jsx';
 import EmptyState from '../EmptyState.jsx';
-import PageHeader from '../PageHeader.jsx';
+import Icon from '../Icon.jsx';
+import ScreenHeader from '../ScreenHeader.jsx';
 import Spinner from '../Spinner.jsx';
-import AnchorStatus from './AnchorStatus.jsx';
 import Composer from './Composer.jsx';
+import LinkedFileCard from './LinkedFileCard.jsx';
 import MessageList from './MessageList.jsx';
+import MessageMenu from './MessageMenu.jsx';
+import RoomDetails from './RoomDetails.jsx';
+import { deliverItem, prepareItem, refreshItem } from './sendFlow.js';
+import { checkServerTrust, composerStatus, firstUnreadSeq, isTrustMismatch, pinGetter, roomStatus } from './roomLogic.js';
 import { getMessages, postMessage } from '../../lib/api.js';
-import {
-  POLL_MS,
-  buildMessageRecord,
-  canResend,
-  createChatSession,
-  createPoller,
-  describeApiError,
-  dropDelivered
-} from '../../lib/chatClient.js';
-import { formatTime, textOf } from '../../lib/format.js';
-import { useIdentity } from '../../lib/identity.jsx';
-import { getPinnedServerKeyId } from '../../lib/pin.js';
-import { recordHash } from '../../../shared/records.js';
+import { canResend, createChatSession, createPoller, describeApiError, dropDelivered } from '../../lib/chatClient.js';
+import { textOf } from '../../lib/format.js';
+import * as pinLib from '../../lib/pin.js';
+import { useSession } from '../../lib/session.jsx';
+import { getLastSeen, markSeen } from '../../lib/unread.js';
 
 const INITIAL = Object.freeze({
   phase: 'loading',
@@ -36,49 +35,63 @@ const INITIAL = Object.freeze({
   failures: 0
 });
 
-function pollWords(poll) {
-  if (poll.status === 'paused') return 'Paused while this tab is hidden.';
-  if (poll.status === 'retrying') return `Connection problem. Trying again in ${Math.max(1, Math.round(poll.delay / 1000))} seconds.`;
-  if (poll.status === 'stopped') return 'Not checking for new messages.';
-  return `Checking for new messages every ${POLL_MS / 1000} seconds.`;
-}
+const STRIP_ICON = { good: 'check', info: 'info', warn: 'warn', bad: 'x' };
 
-// One open channel: header, messages with a check result each, the head line and the compose box.
+// One open chat: header, messages (each one checked in this browser), the writing box.
+// The checking rules are in chatClient.js: every message is verified with the channel id of the route,
+// only the newest page can be tied to the server's signed checkpoint, polling is 3 seconds, paused
+// while the tab is hidden, with back off and never two requests at once.
 export default function ChannelView({ channelId }) {
-  const { status: idStatus, identity } = useIdentity();
+  const session = useSession();
+  const identity = session.identity;
+  const idStatus = composerStatus(session);
+  const prompt = useSignInPrompt();
   const [view, setView] = useState(INITIAL);
   const [poll, setPoll] = useState({ status: 'running', delay: 0 });
   const [pending, setPending] = useState([]);
   const [replyTo, setReplyTo] = useState(null);
+  const [menuEntry, setMenuEntry] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [trust, setTrust] = useState('');
+  const [atBottom, setAtBottom] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState('');
+  const [openedSeen] = useState(() => getLastSeen(channelId));
   const sessionRef = useRef(null);
   const pollerRef = useRef(null);
   const inputRef = useRef(null);
   const sendLock = useRef(false);
+  const trustedFor = useRef('');
+  const live = useRef({ atBottom: true, lastSeq: 0 });
+  const authRef = useRef(session);
+  authRef.current = session;
+  live.current = { atBottom, lastSeq: view.lastSeq };
 
-  // One session and one poller per channel. Cleanup stops both and cancels requests.
+  // One session and one poller per chat. Cleanup stops both and cancels requests.
   useEffect(() => {
     const ctl = new AbortController();
-    const session = createChatSession({
+    const chat = createChatSession({
       channelId,
       getMessages: (id, opts) => getMessages(id, { ...opts, signal: ctl.signal }),
-      getPin: getPinnedServerKeyId
+      getPin: pinGetter(pinLib)
     });
     const poller = createPoller({
-      run: () => session.tick(),
+      run: () => chat.tick(),
       isHidden: () => typeof document !== 'undefined' && document.hidden === true,
       onStatus: (status, delay) => setPoll({ status, delay })
     });
-    sessionRef.current = session;
+    sessionRef.current = chat;
     pollerRef.current = poller;
     setView(INITIAL);
     setPending([]);
     setReplyTo(null);
     setOlderError('');
-    const unsub = session.subscribe(setView);
+    const unsub = chat.subscribe(setView);
     const onVisible = () => {
-      if (!document.hidden) poller.resume();
+      if (document.hidden) return;
+      poller.resume();
+      const { atBottom: bottom, lastSeq } = live.current;
+      if (bottom && lastSeq > 0) markSeen(channelId, lastSeq);
     };
     const onOnline = () => poller.kick();
     document.addEventListener('visibilitychange', onVisible);
@@ -90,7 +103,7 @@ export default function ChannelView({ channelId }) {
       poller.stop();
       ctl.abort();
       unsub();
-      session.dispose();
+      chat.dispose();
       sessionRef.current = null;
       pollerRef.current = null;
     };
@@ -104,6 +117,22 @@ export default function ChannelView({ channelId }) {
     });
   }, [view.entries]);
 
+  // The newest message counts as read once it is on screen in a visible tab.
+  useEffect(() => {
+    if (!atBottom || view.lastSeq <= 0) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    markSeen(channelId, view.lastSeq);
+  }, [atBottom, view.lastSeq, channelId]);
+
+  // First visit remembers the server key, a changed key is reported (src/lib/pin.js).
+  useEffect(() => {
+    const a = view.anchor;
+    if (!a || !a.serverChecked || !a.serverKeyId || trustedFor.current === a.serverKeyId) return;
+    trustedFor.current = a.serverKeyId;
+    const t = checkServerTrust(pinLib, a.serverKeyId);
+    if (t) setTrust(t);
+  }, [view.anchor]);
+
   const kick = useCallback(() => {
     if (pollerRef.current) pollerRef.current.kick();
   }, []);
@@ -112,54 +141,40 @@ export default function ChannelView({ channelId }) {
     setPending((list) => list.map((p) => (p.id === id ? { ...p, ...patch } : p)));
   }, []);
 
-  // Sends the signed record of a pending item. A repeat of a record the server already has
-  // (answer 409) counts as delivered, so a lost answer never causes a second message.
+  // The sending steps are in sendFlow.js. A repeat of a record the server already has counts as
+  // delivered, and a key the server does not know yet is registered once more and tried again.
   const deliver = useCallback(
-    async (item, { retry = false } = {}) => {
-      patchPending(item.id, { status: 'sending', error: '' });
-      try {
-        await postMessage(channelId, item.record, item.signature);
-        patchPending(item.id, { status: 'sent', error: '' });
-        kick();
-      } catch (err) {
-        if (retry && err && err.status === 409) {
-          patchPending(item.id, { status: 'sent', error: '' });
-          kick();
-          return;
-        }
-        patchPending(item.id, { status: 'failed', error: describeApiError(err, 'send the message').message });
-      }
-    },
+    (item, { retry = false } = {}) =>
+      deliverItem(item, {
+        channelId,
+        post: postMessage,
+        patch: patchPending,
+        kick,
+        retry,
+        registerAgain: authRef.current ? authRef.current.registerAgain : undefined
+      }),
     [channelId, kick, patchPending]
   );
 
+  // Signs the message, shows it at once as pending, and sends it in the background, so the next
+  // message can be written while this one is on its way.
   const send = useCallback(
     async (body, parent) => {
-      if (!identity) return { ok: false, error: 'You need an identity to write.' };
-      if (sendLock.current) return { ok: false, error: 'The previous message is still being sent.' };
+      if (!identity) return { ok: false, error: 'You need to be signed in to write.' };
+      if (sendLock.current) return { ok: false, error: 'The previous message is still being signed.' };
       sendLock.current = true;
+      let item;
       try {
-        let item;
-        try {
-          const record = buildMessageRecord({
-            channelId,
-            body,
-            replyTo: parent && parent.hash ? parent.hash : '',
-            signer: identity.keyId
-          });
-          const signature = await identity.sign(record);
-          const hash = await recordHash(record);
-          item = { id: hash, hash, record, signature, status: 'sending', error: '' };
-        } catch (err) {
-          return { ok: false, error: err && err.message ? err.message : 'Could not sign the message.' };
-        }
-        setPending((list) => (list.some((p) => p.id === item.id) ? list : [...list, item]));
-        setReplyTo(null);
-        await deliver(item);
-        return { ok: true };
+        item = await prepareItem({ channelId, body, parent, identity });
+      } catch (err) {
+        return { ok: false, error: err && err.message ? err.message : 'Could not sign the message.' };
       } finally {
         sendLock.current = false;
       }
+      setPending((list) => (list.some((p) => p.id === item.id) ? list : [...list, item]));
+      setReplyTo(null);
+      deliver(item);
+      return { ok: true };
     },
     [channelId, identity, deliver]
   );
@@ -172,15 +187,7 @@ export default function ChannelView({ channelId }) {
       }
       // Too old for the server to accept: sign the same text again with a fresh time.
       try {
-        const record = buildMessageRecord({
-          channelId,
-          body: item.record.body,
-          replyTo: item.record.replyTo,
-          signer: identity.keyId
-        });
-        const signature = await identity.sign(record);
-        const hash = await recordHash(record);
-        const next = { id: hash, hash, record, signature, status: 'sending', error: '' };
+        const next = await refreshItem({ channelId, item, identity });
         setPending((list) => list.map((p) => (p.id === item.id ? next : p)));
         await deliver(next);
       } catch (err) {
@@ -193,12 +200,12 @@ export default function ChannelView({ channelId }) {
   const discard = useCallback((item) => setPending((list) => list.filter((p) => p.id !== item.id)), []);
 
   const loadOlder = useCallback(async () => {
-    const session = sessionRef.current;
-    if (!session || loadingOlder) return;
+    const chat = sessionRef.current;
+    if (!chat || loadingOlder) return;
     setLoadingOlder(true);
     setOlderError('');
     try {
-      await session.loadOlder();
+      await chat.loadOlder();
     } catch (err) {
       setOlderError(describeApiError(err, 'load older messages').message);
     } finally {
@@ -208,7 +215,11 @@ export default function ChannelView({ channelId }) {
 
   const startReply = useCallback((entry) => {
     setReplyTo(entry);
-    if (inputRef.current) inputRef.current.focus();
+    setMenuEntry(null);
+    // wait one tick: a closing menu gives focus back to its button first
+    setTimeout(() => {
+      if (inputRef.current) inputRef.current.focus();
+    }, 0);
   }, []);
 
   const nameOf = useCallback(
@@ -222,115 +233,122 @@ export default function ChannelView({ channelId }) {
   const channel = view.channel;
   // The channel summary is not signature checked, so every field is coerced before it is shown.
   const title = (channel && textOf(channel.title)) || channelId;
-  const startedBy = channel ? textOf(channel.createdByName) : '';
   const aboutDoc = channel ? textOf(channel.docId) : '';
-  const header = useMemo(
-    () => (
-      <PageHeader
-        title={title}
-        documentTitle={`${title} (chat)`}
-        lead={
-          channel ? (
-            <span className="chat-lead">
-              <span className="chat-lead__id">{channelId}</span>
-              {startedBy ? <span>{`Started by ${startedBy} (not signature checked)`}</span> : null}
-              {Number.isFinite(channel.createdAt) ? <span>{formatTime(channel.createdAt)}</span> : null}
-              {aboutDoc ? (
-                <span>
-                  About document <Link to={`/d/${aboutDoc}`}>{aboutDoc.slice(0, 8)}...</Link>
-                </span>
-              ) : null}
-            </span>
-          ) : (
-            channelId
-          )
-        }
-        actions={
-          <Link className="ui-btn ui-btn--secondary" to="/chat">
-            All channels
-          </Link>
-        }
-      />
-    ),
-    [channel, channelId, title]
+  const ownKeyId = identity ? identity.keyId : '';
+  const firstUnread = useMemo(() => firstUnreadSeq(view.entries, openedSeen, ownKeyId), [view.entries, openedSeen, ownKeyId]);
+  const status = roomStatus(view, poll);
+
+  const header = (
+    <ScreenHeader
+      back="/chats"
+      backLabel="Back to chats"
+      leading={<Avatar name={title} keyId={channelId} size={40} />}
+      title={title}
+      subtitle="Public chat"
+      documentTitle={`${title} (chat)`}
+      actions={
+        <button type="button" className="chat-iconbtn chat-iconbtn--head" onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-label="Chat details">
+          <Icon name="info" size={22} />
+        </button>
+      }
+    />
   );
 
   if (view.phase === 'missing') {
     return (
-      <div className="ui-container">
-        <PageHeader title="Channel not found" lead={channelId} actions={<Link className="ui-btn ui-btn--secondary" to="/chat">All channels</Link>} />
-        <EmptyState title="There is no channel with this id">
-          Check the address, or <Link to="/chat">start a new channel</Link>.
-        </EmptyState>
+      <div className="chat-room">
+        {header}
+        <div className="chat-room__main">
+          <EmptyState art="search" title="There is no chat with this address" action={<Link className="ui-btn ui-btn--primary" to="/chats">Back to chats</Link>}>
+            Check the address, or go back to the list and start a new chat.
+          </EmptyState>
+        </div>
       </div>
     );
   }
 
   const loading = view.phase === 'loading';
   const failedFirst = view.phase === 'error';
-  const ownKeyId = identity ? identity.keyId : '';
-  const verifiedCount = view.entries.filter((e) => e.verdict && e.verdict.status === 'verified').length;
-  const failedCount = view.entries.filter((e) => e.verdict && e.verdict.status === 'invalid').length;
+  const mismatch = isTrustMismatch(trust) || Boolean(view.anchor && view.anchor.pinMismatch);
 
   return (
-    <div className="ui-container chat-view">
+    <div className="chat-room">
       {header}
-      {failedFirst ? (
-        <Callout tone="bad" title="Could not load the messages">
-          <p>{view.error}</p>
-          <p>
-            <Button size="sm" onClick={kick}>
-              Try again
-            </Button>
-            {poll.status === 'retrying' ? <span className="ui-muted">{` Trying again by itself in ${Math.max(1, Math.round(poll.delay / 1000))} seconds.`}</span> : null}
-          </p>
-        </Callout>
-      ) : null}
-      {loading ? (
-        <div className="chat-loading" aria-busy="true">
-          <Spinner label="Loading and checking messages" />
-          <p className="ui-muted">Loading the latest messages and checking each signature.</p>
-        </div>
-      ) : null}
-      {!loading && !failedFirst ? (
-        <>
-          {view.problems.length > 0 ? (
-            <Callout tone="bad" title="Problems found while checking this channel">
-              <ul className="ui-list">
-                {view.problems.map((p) => (
-                  <li key={p}>{p}</li>
-                ))}
-              </ul>
+      <div className="chat-room__main">
+        {failedFirst ? (
+          <div className="chat-room__notice">
+            <Callout tone="bad" title="Could not load the messages">
+              <p>{view.error}</p>
+              <p>
+                <Button size="sm" onClick={kick}>
+                  Try again
+                </Button>
+                {poll.status === 'retrying' ? <span className="ui-muted">{` Trying again by itself in ${Math.max(1, Math.round(poll.delay / 1000))} seconds.`}</span> : null}
+              </p>
             </Callout>
-          ) : null}
-          <MessageList
-            entries={view.entries}
-            pending={pending}
-            identities={view.identities}
-            ownKeyId={ownKeyId}
-            ownName={identity ? identity.displayName : ''}
-            canReply={idStatus === 'ready'}
-            onReply={startReply}
-            onRetry={retry}
-            onDiscard={discard}
-            hasOlder={view.hasOlder}
-            loadingOlder={loadingOlder}
-            olderError={olderError}
-            onLoadOlder={loadOlder}
-          />
-          <AnchorStatus anchor={view.anchor} />
-          <p className="chat-statusline" role="status">
-            {view.entries.length > 0
-              ? `${verifiedCount} of ${view.entries.length} shown messages have a verified signature${failedCount ? `, ${failedCount} failed` : ''}. `
-              : ''}
-            {view.error ? `${view.error} ` : ''}
-            {pollWords(poll)}
-          </p>
-          <p className="ui-muted chat-note">
-            Names on messages come from each sender's own signed identity record, and names are not unique, so two people can choose the same name. The code next to a name is only the first 16 of 64 characters of the sender's key id. Press it to see the whole key id, which is what identifies a sender. The channel title and who started it come from the server and are not signature checked. Times are written by the sender and are not attested.
-          </p>
-        </>
-      ) : null}
+          </div>
+        ) : null}
+        {loading ? (
+          <div className="chat-loading" aria-busy="true">
+            <Spinner label="Loading messages" />
+            <p className="ui-muted">Loading messages and checking who wrote them.</p>
+          </div>
+        ) : null}
+        {!loading && !failedFirst ? (
+          <>
+            <div className="chat-strip-wrap">
+              <p className={`chat-strip chat-strip--${status.tone}`} role={status.tone === 'bad' ? 'alert' : undefined}>
+                <Icon name={STRIP_ICON[status.tone] || 'info'} size={16} />
+                <span className="chat-strip__text">{status.text}</span>
+                <button type="button" className="chat-strip__more" onClick={() => setDetailsOpen(true)}>
+                  Details
+                </button>
+              </p>
+            </div>
+            {mismatch ? (
+              <div className="chat-room__notice">
+                <Callout tone="bad" title="The server's identity changed since your last visit">
+                  <p>The server now uses a different key than the one saved or seen before. Do not rely on this chat until you know why.</p>
+                </Callout>
+              </div>
+            ) : null}
+            {view.problems.length > 0 ? (
+              <div className="chat-room__notice">
+                <Callout tone="bad" title="Problems found while checking this chat">
+                  <ul className="ui-list">
+                    {view.problems.map((p) => (
+                      <li key={p}>{p}</li>
+                    ))}
+                  </ul>
+                </Callout>
+              </div>
+            ) : null}
+            {aboutDoc ? (
+              <div className="chat-room__notice">
+                <LinkedFileCard docId={aboutDoc} />
+              </div>
+            ) : null}
+            <MessageList
+              entries={view.entries}
+              pending={pending}
+              identities={view.identities}
+              ownKeyId={ownKeyId}
+              ownName={identity ? identity.displayName : ''}
+              canReply={idStatus === 'ready'}
+              onReply={startReply}
+              onMenu={setMenuEntry}
+              onRetry={retry}
+              onDiscard={discard}
+              hasOlder={view.hasOlder}
+              loadingOlder={loadingOlder}
+              olderError={olderError}
+              onLoadOlder={loadOlder}
+              onBottomChange={setAtBottom}
+              firstUnread={firstUnread}
+            />
+          </>
+        ) : null}
+      </div>
       <Composer
         identityStatus={idStatus}
         signerName={identity ? identity.displayName : ''}
@@ -340,6 +358,18 @@ export default function ChannelView({ channelId }) {
         onSend={send}
         inputRef={inputRef}
       />
+      <MessageMenu
+        entry={menuEntry}
+        name={menuEntry && menuEntry.record ? nameOf(menuEntry.record.signer) : ''}
+        canReply={idStatus === 'ready'}
+        onReply={startReply}
+        onClose={() => setMenuEntry(null)}
+        onNeedSignIn={() => {
+          setMenuEntry(null);
+          prompt.open('to reply in this chat');
+        }}
+      />
+      <RoomDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} channelId={channelId} view={view} poll={poll} trust={trust} />
     </div>
   );
 }

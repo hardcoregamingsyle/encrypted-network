@@ -1,0 +1,46 @@
+/* The six code boxes. */
+
+.ui-otp__label {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
+.ui-otp__boxes {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.ui-otp__box {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 3.5rem;
+  min-height: 3.5rem;
+  padding: 0;
+  text-align: center;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  caret-color: var(--color-accent);
+}
+
+.ui-otp.has-error .ui-otp__box {
+  border-color: var(--color-bad);
+}
+
+.ui-otp__error {
+  margin: var(--space-1) 0 0;
+  color: var(--color-bad);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* an alert with no text yet takes no room but stays in the page, so a screen reader hears it when text arrives */
+.ui-otp__error:empty {
+  position: absolute;
+  width: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -305,6 +305,8 @@ function makeIdentity(stored) {
     createdAt: stored.createdAt,
     record: stored.record,
     signature: stored.signature,
+    // true for an identity made with a passphrase (or restored from a backup file)
+    hasBackup: typeof stored.backupText === 'string',
     sign: (record) => signRecord(privateKey, record)
   };
 }
@@ -376,4 +378,67 @@ export async function exportBackup(passphrase, { iterations = BACKUP_ITERATIONS 
   const { keyId, ...payload } = opened;
   const backupText = await buildBackup(keyId, payload, passphrase, { iterations });
   return { backupText, backupName: backupFileName(keyId) };
+}
+
+// ---------------------------------------------------------------------------
+// Slots. The device keys of the account flow (src/lib/deviceKey.js) live in the same storage, under
+// their own names. These are small wrappers so that file never needs to know about the adapter.
+
+// The identity object (with sign) for a stored record, or null when it is not usable.
+export function identityFromStored(stored) {
+  if (!stored || typeof stored !== 'object' || !stored.privateKey || typeof stored.keyId !== 'string') return null;
+  return makeIdentity(stored);
+}
+
+export function storageGet(key) {
+  return storage().get(key);
+}
+
+export function storageSet(key, value) {
+  return storage().set(key, value);
+}
+
+export function storageRemove(key) {
+  return storage().remove(key);
+}
+
+// Checks that private part, public part, key id and the signed identity record all belong together.
+// payload = { privateJwk, record, signature }. Returns the opened identity data
+// { keyId, privateJwk, publicKey, displayName, createdAt, record, signature } or throws a plain Error.
+export async function openIdentityPayload(payload) {
+  if (!isObject(payload)) throw new Error(MSG_DAMAGED);
+  const { privateJwk, record, signature } = payload;
+  if (!isObject(record) || !isObject(record.publicKey)) throw new Error(MSG_DAMAGED);
+  let derived;
+  try {
+    derived = publicJwkFromPrivate(privateJwk);
+  } catch {
+    throw new Error(MSG_DAMAGED);
+  }
+  const keyId = await keyIdOf(derived);
+  const inner = {
+    privateJwk,
+    publicKey: derived,
+    displayName: record.displayName,
+    createdAt: record.createdAt,
+    record,
+    signature
+  };
+  await checkInner(inner, keyId);
+  return { keyId, ...inner };
+}
+
+// Re-imports the private key as non extractable and returns the record to store.
+// No backup text is kept: device keys have no passphrase and no backup file.
+export async function storedFromOpened(opened) {
+  const privateKey = await importPrivateJwk(opened.privateJwk, { extractable: false });
+  return {
+    keyId: opened.keyId,
+    displayName: opened.displayName,
+    publicKey: opened.publicKey,
+    createdAt: opened.createdAt,
+    record: opened.record,
+    signature: opened.signature,
+    privateKey
+  };
 }

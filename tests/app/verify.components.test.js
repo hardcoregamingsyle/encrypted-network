@@ -20,19 +20,25 @@ import { buildBundle, createIdentity, createServerKey } from '../helpers/bundle.
 const render = (node, path = '/verify') => renderToString(h(MemoryRouter, { initialEntries: [path] }, node));
 
 describe('VerifyPage', () => {
-  it('renders all five sections and says no account is needed', () => {
+  // The screen was rebuilt (plain language Check box first, the old tools under Advanced). The old
+  // sections are unchanged, so these checks keep asserting them, now inside the Advanced disclosure.
+  it('renders the quick check first and all six tools inside Advanced, and says no account is needed', () => {
     const html = render(h(VerifyPage));
     expect(html).toContain('This page needs no account');
-    for (const id of ['verify-pin', 'verify-document', 'verify-bundle', 'verify-file', 'verify-audit']) {
+    expect(html.indexOf('Check a document')).toBeGreaterThan(-1);
+    expect(html.indexOf('Check a document')).toBeLessThan(html.indexOf('Advanced'));
+    expect(html).toContain('<details class="verify-advanced">');
+    for (const id of ['verify-pin', 'verify-remembered', 'verify-document', 'verify-bundle', 'verify-file', 'verify-audit']) {
       expect(html).toContain(`id="${id}"`);
       expect(html).toContain(`href="#${id}"`);
+      expect(html.indexOf(`id="${id}"`)).toBeGreaterThan(html.indexOf('verify-advanced'));
     }
     expect(html).toContain('1. Server key pin');
     expect(html).toContain('2. Verify a document');
     expect(html).toContain('3. Verify a saved bundle');
     expect(html).toContain('4. Check a file');
     expect(html).toContain('5. Full ledger audit');
-    expect(html).toContain('<h1');
+    expect((html.match(/<h1/g) || []).length).toBe(1);
   });
 
   it('every input has a label and every section is a labelled region', () => {
@@ -44,18 +50,19 @@ describe('VerifyPage', () => {
       expect(id, tag).not.toBeNull();
       expect(html).toContain(`for="${id[1]}"`);
     }
-    expect((html.match(/aria-labelledby="verify-[a-z]+-title"/g) || []).length).toBe(5);
+    expect((html.match(/aria-labelledby="verify-[a-z]+-title"/g) || []).length).toBe(6);
   });
 
   it('is served on the /verify route', () => {
     const html = render(h(App), '/verify');
     expect(html).toContain('This page needs no account');
+    expect(html).toContain('Paste a link or ID');
   });
 
   it('the intro of each section is one plain sentence', () => {
     const html = render(h(VerifyPage));
     const intros = html.match(/class="verify-section__intro">[^<]+</g) || [];
-    expect(intros).toHaveLength(5);
+    expect(intros).toHaveLength(6);
   });
 });
 
@@ -262,6 +269,9 @@ describe('text rules for the files of this page', () => {
   const root = join(import.meta.dirname, '..', '..');
   const files = [
     'src/pages/VerifyPage.jsx',
+    'src/components/VerifySummary.jsx',
+    'src/lib/pin.js',
+    'src/lib/trust.js',
     'src/lib/audit.js',
     'src/styles/verify.css',
     ...readdirSync(join(root, 'src/components/verify')).map((f) => `src/components/verify/${f}`)

@@ -6,6 +6,7 @@ const KEY = 'hrdlock.localDocs';
 const MAX_ENTRIES = 500;
 const MAX_LABEL = 120;
 const DOC_ID_RE = /^[0-9a-f]{32}$/;
+const OWNER_RE = /^[0-9a-f]{64}$/;
 
 function store() {
   try {
@@ -20,7 +21,9 @@ function clean(entry) {
   if (typeof entry.docId !== 'string' || !DOC_ID_RE.test(entry.docId)) return null;
   const label = typeof entry.label === 'string' ? Array.from(entry.label).slice(0, MAX_LABEL).join('') : '';
   const createdAt = Number.isFinite(entry.createdAt) ? entry.createdAt : 0;
-  return { docId: entry.docId, label, createdAt };
+  // The key id of the person who published it, so a list is never shown to somebody else on the same browser.
+  const owner = typeof entry.owner === 'string' && OWNER_RE.test(entry.owner) ? entry.owner : '';
+  return owner ? { docId: entry.docId, label, createdAt, owner } : { docId: entry.docId, label, createdAt };
 }
 
 function readAll() {
@@ -62,7 +65,7 @@ export function listLocalDocs() {
   return readAll().sort((a, b) => b.createdAt - a.createdAt);
 }
 
-// entry: { docId, label, createdAt }. Only those three fields are kept. Returns true when saved.
+// entry: { docId, label, createdAt, owner }. Only those fields are kept. Returns true when saved.
 export function rememberDoc(entry) {
   const e = clean(entry);
   if (!e) return false;
@@ -70,6 +73,22 @@ export function rememberDoc(entry) {
   list.push(e);
   list.sort((a, b) => b.createdAt - a.createdAt);
   return writeAll(list.slice(0, MAX_ENTRIES));
+}
+
+// The entries that belong to one key: those it published, and old ones that name no owner.
+export function docsOwnedBy(list, keyId) {
+  return (Array.isArray(list) ? list : []).filter((e) => e && (!e.owner || e.owner === keyId));
+}
+
+// Forgets the whole list. Used when the person using this browser changes (sign out, delete, leave).
+export function clearLocalDocs() {
+  try {
+    const s = store();
+    if (s) s.removeItem(KEY);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function forgetDoc(docId) {

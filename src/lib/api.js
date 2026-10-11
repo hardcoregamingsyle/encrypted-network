@@ -2,11 +2,13 @@
 // Every function throws ApiError on a non 2xx answer or a network failure.
 
 export class ApiError extends Error {
-  constructor(status, code, message) {
+  constructor(status, code, message, retryAfter = 0) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    // seconds the server asked us to wait (429 answers), 0 when it did not say
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -19,6 +21,7 @@ const NETWORK_MESSAGE = 'Could not reach the server. Check your connection and t
 
 function codeForStatus(status) {
   if (status === 404) return 'not_found';
+  if (status === 401) return 'unauthenticated';
   if (status === 403) return 'forbidden';
   if (status === 409) return 'conflict';
   if (status === 413) return 'too_large';
@@ -50,7 +53,27 @@ async function errorFrom(response) {
     body && typeof body.error === 'string' && body.error
       ? body.error
       : `The server answered with status ${response.status}.`;
-  return new ApiError(response.status, code, message);
+  const header = response.headers && response.headers.get ? Number(response.headers.get('retry-after')) : NaN;
+  const retryAfter = Number.isFinite(header) && header > 0 ? Math.min(3600, Math.ceil(header)) : 0;
+  return new ApiError(response.status, code, message, retryAfter);
+}
+
+// The app is told when a normal call is answered 401 unauthenticated (the session ended or ran out), so it can
+// move to the signed out state with a short message. Calls that look at the session on purpose (GET /api/me)
+// are quiet: they handle the 401 themselves.
+let unauthenticatedHandler = null;
+
+export function setUnauthenticatedHandler(fn) {
+  unauthenticatedHandler = typeof fn === 'function' ? fn : null;
+}
+
+function tellUnauthenticated(error) {
+  if (!unauthenticatedHandler) return;
+  try {
+    unauthenticatedHandler(error);
+  } catch {
+    // the handler must never change what the caller sees
+  }
 }
 
 const BUSY_RETRIES = 3;
@@ -64,7 +87,7 @@ export function setSleepForTests(fn) {
 // Sends the request and returns the Response, or throws ApiError.
 // The server answers 503 "busy" when many writers arrive at once and it wrote nothing,
 // so the same request is safe to send again a few times.
-async function send(path, init = {}) {
+async function send(path, init = {}, quiet = false) {
   for (let attempt = 0; ; attempt++) {
     let response;
     try {
@@ -86,6 +109,7 @@ async function send(path, init = {}) {
       await sleep(seconds * 1000 + attempt * 500);
       continue;
     }
+    if (!quiet && error.status === 401 && error.code === 'unauthenticated') tellUnauthenticated(error);
     throw error;
   }
 }
@@ -139,13 +163,13 @@ async function parseJson(response) {
   }
 }
 
-async function requestJson(path, { method = 'GET', body, signal } = {}) {
+async function requestJson(path, { method = 'GET', body, signal, quiet = false } = {}) {
   const init = { method, signal, headers: { accept: 'application/json' } };
   if (body !== undefined) {
     init.headers['content-type'] = 'application/json';
     init.body = JSON.stringify(body);
   }
-  const response = await send(path, init);
+  const response = await send(path, init, quiet);
   return parseJson(response);
 }
 
@@ -231,4 +255,93 @@ export function postMessage(channelId, record, signature) {
     method: 'POST',
     body: { record, signature }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Accounts: email and code sign in, the session cookie, the account's key and file passwords.
+// The cookie is HttpOnly and travels by itself (credentials: same-origin). The browser adds the
+// Origin header to every POST, PUT and DELETE, which the server checks.
+
+// { ok, signing, mail: 'none' | 'resend' | ..., accounts: boolean }
+export function getHealth(opts) {
+  return requestJson('/api/health', opts);
+}
+
+// -> { sent: true, cooldown: 30 }
+export function authRequest(email) {
+  return requestJson('/api/auth/request', { method: 'POST', body: { email } });
+}
+
+// -> { account, isNew }
+export function authVerify(email, code) {
+  return requestJson('/api/auth/verify', { method: 'POST', body: { email, code } });
+}
+
+// Signs this device out. { all: true } ends every session of the account, this one too -> { ok, ended }.
+export function authLogout({ all = false } = {}) {
+  // Quiet: a 401 here only means the session was gone already, which is what was asked for.
+  return requestJson('/api/auth/logout', { method: 'POST', body: all ? { all: true } : {}, quiet: true });
+}
+
+// -> { account: { id, displayName, emailMasked, strict, createdAt }, keys: [{ keyId, hasCloudCopy }] }, or ApiError 401.
+// Quiet: the caller reads the 401 itself (it only means nobody is signed in).
+export function getMe(opts) {
+  return requestJson('/api/me', { ...opts, quiet: true });
+}
+
+// body: { record, signature, privateJwk? } -> { keyId }
+export function postMyKey(body) {
+  return requestJson('/api/me/key', { method: 'POST', body });
+}
+
+// -> { keyId, publicKey, privateJwk, record, signature }. 401 reauth_required when the session is older than 15 minutes.
+export function getMyKey(opts) {
+  return requestJson('/api/me/key', opts);
+}
+
+// Same row shape as listDocuments, but every document owned by any key of the account.
+export function listMyDocuments({ limit, before, beforeId, signal } = {}) {
+  return requestJson('/api/me/documents' + queryString({ limit, before, beforeId }), { signal });
+}
+
+export function putSecret(docId, password) {
+  return requestJson(`/api/me/secrets/${enc(docId)}`, { method: 'PUT', body: { password } });
+}
+
+// -> { password }
+export function getSecret(docId, opts) {
+  return requestJson(`/api/me/secrets/${enc(docId)}`, opts);
+}
+
+// Strict mode. Always needs a session made in the last 15 minutes (401 reauth_required).
+//   postStrict(false)                     -> { strict: false, passwords: [] }
+//   postStrict(true [, { after }])        -> { strict: true, passwords: [{ docId, password }] (at most 100), next: docId | null, unreadable? }
+//                                            Nothing is deleted by asking. Send after: next for the following page.
+//   postStrict(true, { confirmThrough })  -> { strict: true, passwords: [], next: null, remaining }
+//                                            Deletes the server's copies up to and including that docId.
+export function postStrict(enabled, { after, confirmThrough } = {}) {
+  const body = { enabled: Boolean(enabled) };
+  if (after !== undefined && after !== null) body.after = after;
+  if (confirmThrough !== undefined && confirmThrough !== null) body.confirmThrough = confirmThrough;
+  return requestJson('/api/me/strict', { method: 'POST', body });
+}
+
+// Needs a session made in the last 15 minutes (401 reauth_required).
+export function deleteMe() {
+  return requestJson('/api/me', { method: 'DELETE' });
+}
+
+// -> { sessions: [{ id, createdAt, lastSeenAt, expiresAt, current }] }, newest first
+export function getSessions(opts) {
+  return requestJson('/api/me/sessions', opts);
+}
+
+// Ends every session except this one -> { ok: true, ended: n }
+export function endOtherSessions() {
+  return requestJson('/api/me/sessions', { method: 'DELETE' });
+}
+
+// Ends one session by the id from getSessions -> { ok: true }, or 404 when it is gone already
+export function endSession(id) {
+  return requestJson(`/api/me/sessions/${enc(id)}`, { method: 'DELETE' });
 }

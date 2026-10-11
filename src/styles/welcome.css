@@ -1,0 +1,147 @@
+/* Welcome and sign in: centred cards with no navigation around them. */
+
+.welcome,
+.signin {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4) var(--space-2);
+  background: var(--color-bg);
+}
+
+.welcome__card,
+.signin__card {
+  width: 100%;
+  max-width: 26rem;
+}
+
+.welcome__card {
+  text-align: center;
+}
+
+.welcome__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 5rem;
+  aspect-ratio: 1 / 1;
+  margin-bottom: var(--space-2);
+  border-radius: 1.5rem;
+  background: var(--gradient-accent);
+  color: var(--color-on-accent);
+  box-shadow: var(--shadow-md);
+}
+
+.welcome__title {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-3xl);
+  letter-spacing: -0.03em;
+}
+
+.welcome__lead {
+  margin-bottom: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--text-lg);
+}
+
+.welcome__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.welcome__actions .ui-btn {
+  width: 100%;
+  min-height: 3.25rem;
+  font-size: var(--text-md);
+}
+
+.welcome-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.welcome-option__note,
+.welcome__note {
+  margin: 0;
+}
+
+.welcome__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-0) var(--space-3);
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.welcome__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-size);
+}
+
+.welcome__foot {
+  margin: 0;
+}
+
+/* sign in */
+
+.signin__card {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.signin__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0);
+  min-height: var(--tap-size);
+  margin-bottom: var(--space-1);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.signin__title {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-2xl);
+}
+
+.signin__sent {
+  margin: 0;
+}
+
+.signin__sent .ui-icon {
+  margin-right: var(--space-0);
+}
+
+/* a live region with no text yet takes no room, but stays in the page so a screen reader hears it when text arrives */
+.signin__form p:empty {
+  position: absolute;
+  width: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.signin__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-0) var(--space-1);
+}
+
+@media (max-width: 30rem) {
+  .signin__card {
+    padding: var(--space-2);
+  }
+}

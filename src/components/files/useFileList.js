@@ -1,14 +1,15 @@
-// Loads a page of documents from the server and more pages on demand.
+// Loads a page of documents and more pages on demand.
+// fetcher(params) must resolve to { documents }. By default it is the public list.
 // status: 'loading' | 'ready' | 'error'. A newer request always wins over an older one.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listDocuments } from '../../lib/api.js';
-import { PAGE_SIZE, appendPage, hasMorePage, listParams, nextCursor, nextCursorId } from './vaultLogic.js';
+import { PAGE_SIZE, appendPage, hasMorePage, listParams, nextCursor, nextCursorId } from '../vault/vaultLogic.js';
 
 function messageOf(err) {
-  return err && err.message ? err.message : 'Could not load the documents.';
+  return err && err.message ? err.message : 'Could not load the files.';
 }
 
-export default function useDocumentList({ owner = '', q = '', enabled = true, limit = PAGE_SIZE, reloadKey = 0 } = {}) {
+export default function useFileList({ fetcher = listDocuments, owner = '', q = '', enabled = true, limit = PAGE_SIZE, reloadKey = 0 } = {}) {
   const [state, setState] = useState({
     status: enabled ? 'loading' : 'ready',
     items: [],
@@ -21,6 +22,8 @@ export default function useDocumentList({ owner = '', q = '', enabled = true, li
   const ticket = useRef(0);
   const itemsRef = useRef([]);
   const abortRef = useRef(null);
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
 
   const begin = useCallback(() => {
     if (abortRef.current) abortRef.current.abort();
@@ -35,19 +38,11 @@ export default function useDocumentList({ owner = '', q = '', enabled = true, li
     const { mine, signal } = begin();
     setState((s) => ({ ...s, status: 'loading', error: '', moreError: '', announce: '' }));
     try {
-      const res = await listDocuments({ ...listParams({ owner, q, limit }), signal });
+      const res = await fetcherRef.current({ ...listParams({ owner, q, limit }), signal });
       if (mine !== ticket.current) return;
       const page = Array.isArray(res && res.documents) ? res.documents : [];
       itemsRef.current = appendPage([], page);
-      setState({
-        status: 'ready',
-        items: itemsRef.current,
-        hasMore: hasMorePage(page, limit),
-        error: '',
-        moreBusy: false,
-        moreError: '',
-        announce: ''
-      });
+      setState({ status: 'ready', items: itemsRef.current, hasMore: hasMorePage(page, limit), error: '', moreBusy: false, moreError: '', announce: '' });
     } catch (err) {
       if (mine !== ticket.current || (err && err.name === 'AbortError')) return;
       itemsRef.current = [];
@@ -62,7 +57,7 @@ export default function useDocumentList({ owner = '', q = '', enabled = true, li
     try {
       const before = nextCursor(itemsRef.current);
       const beforeId = nextCursorId(itemsRef.current);
-      const res = await listDocuments({ ...listParams({ owner, q, before, beforeId, limit }), signal });
+      const res = await fetcherRef.current({ ...listParams({ owner, q, before, beforeId, limit }), signal });
       if (mine !== ticket.current) return;
       const page = Array.isArray(res && res.documents) ? res.documents : [];
       const countBefore = itemsRef.current.length;
@@ -73,7 +68,7 @@ export default function useDocumentList({ owner = '', q = '', enabled = true, li
         items: itemsRef.current,
         hasMore: hasMorePage(page, limit) && added > 0,
         moreBusy: false,
-        announce: added > 0 ? `${added} more ${added === 1 ? 'document' : 'documents'} loaded` : 'No more documents'
+        announce: added > 0 ? `${added} more ${added === 1 ? 'file' : 'files'} loaded` : 'No more files'
       }));
     } catch (err) {
       if (mine !== ticket.current || (err && err.name === 'AbortError')) return;

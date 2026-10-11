@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { clearPin, getPinnedServerKeyId, setPinnedServerKeyId } from '../../src/lib/pin.js';
 import { fullLink, parseFragment, verifyLink } from '../../src/lib/links.js';
-import { forgetDoc, listLocalDocs, rememberDoc } from '../../src/lib/localDocs.js';
+import { clearLocalDocs, forgetDoc, listLocalDocs, rememberDoc } from '../../src/lib/localDocs.js';
 
 function fakeStorage() {
   const map = new Map();
@@ -119,6 +119,22 @@ describe('localDocs', () => {
     const raw = [...s.map.values()].join('');
     expect(raw).not.toContain('SECRET');
     expect(Object.keys(listLocalDocs()[0]).sort()).toEqual(['createdAt', 'docId', 'label']);
+  });
+
+  it('keeps the key id of the person who published it, and only a well formed one', () => {
+    vi.stubGlobal('localStorage', fakeStorage());
+    const owner = 'ab'.repeat(32);
+    rememberDoc({ docId: DOC, label: 'x', createdAt: 5, owner });
+    expect(listLocalDocs()[0].owner).toBe(owner);
+    rememberDoc({ docId: DOC, label: 'x', createdAt: 6, owner: 'not a key id' });
+    expect(listLocalDocs()[0].owner).toBeUndefined();
+  });
+
+  it('clearLocalDocs forgets the whole list', () => {
+    vi.stubGlobal('localStorage', fakeStorage());
+    rememberDoc({ docId: DOC, label: 'x', createdAt: 5 });
+    expect(clearLocalDocs()).toBe(true);
+    expect(listLocalDocs()).toEqual([]);
   });
 
   it('rejects bad entries', () => {

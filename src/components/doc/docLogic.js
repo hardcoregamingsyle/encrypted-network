@@ -414,8 +414,12 @@ export function passwordFileText(docId, password) {
 }
 
 // The big line on the printed report. It says what was checked and whether the server key was pinned.
-function resultLine({ ok, anchored, pinned, revoked }) {
-  if (!ok) return 'DID NOT PASS verification';
+const ROLLBACK_SENTENCE = 'This answer is older than one this browser saw earlier, so a newer version may exist. Do not rely on it.';
+
+function resultLine({ ok, anchored, pinned, revoked, rollback }) {
+  if (!ok) return 'DID NOT PASS verification' + (rollback ? '. ' + ROLLBACK_SENTENCE : '');
+  // An old answer with a fresh, valid proof is the case this browser's memory exists to catch, so it can never print as a clean pass.
+  if (rollback) return 'NOT A CLEAN PASS. ' + ROLLBACK_SENTENCE;
   const what = anchored ? 'Signatures, version chain and server checkpoint passed.' : 'Signatures and version chain passed. The latest version is NOT confirmed by the server.';
   const key = pinned ? ' Server key pinned and matched.' : ' Server key NOT pinned: the server is not independently identified.';
   return (revoked ? 'Document revoked by its owner. ' : '') + what + key;
@@ -451,8 +455,9 @@ export function certificateData({ bundle, verification, pinnedServerKeyId = '', 
     ledgerCheckpoint: cp ? { seq: cp.seq, hash: cp.hash, signedAt: cp.signedAt } : null,
     headCheckpoint: hcp ? { seq: hcp.seq, hash: hcp.hash, signedAt: hcp.signedAt } : null,
     anchored: !!verification && verification.anchored === true,
+    rollback: !!verification && verification.rollback === true,
     ok,
-    resultText: resultLine({ ok, anchored: !!verification && verification.anchored === true, pinned: !!pinnedServerKeyId && serverKeyPinned(verification) && !!server && server.keyId === pinnedServerKeyId, revoked: !!verification && verification.status === 'revoked' }),
+    resultText: resultLine({ ok, rollback: !!verification && verification.rollback === true, anchored: !!verification && verification.anchored === true, pinned: !!pinnedServerKeyId && serverKeyPinned(verification) && !!server && server.keyId === pinnedServerKeyId, revoked: !!verification && verification.status === 'revoked' }),
     failed,
     checkedAt: now,
     limits: LIMITS_SENTENCE,

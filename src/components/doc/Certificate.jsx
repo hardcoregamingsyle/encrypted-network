@@ -21,7 +21,7 @@ export default function Certificate({ bundle, verification, pinnedServerKeyId, c
   return (
     <section className="doc-cert" aria-hidden="true" data-testid="doc-cert">
       <h1 className="doc-cert__title">Document verification report</h1>
-      <p className={`doc-cert__result ${c.ok ? 'is-ok' : 'is-bad'}`}>{c.resultText}</p>
+      <p className={`doc-cert__result ${c.ok && !c.rollback ? 'is-ok' : 'is-bad'}`}>{c.resultText}</p>
       <dl className="doc-cert__list">
         <Row label="Document id">{c.docId}</Row>
         <Row label="Status">

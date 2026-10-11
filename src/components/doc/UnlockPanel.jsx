@@ -4,6 +4,7 @@ import Callout from '../Callout.jsx';
 import Field from '../Field.jsx';
 import Icon from '../Icon.jsx';
 import { formatBytes } from '../../lib/format.js';
+import useBusyAction from '../useBusyAction.js';
 import ProgressList from './ProgressList.jsx';
 import { hasPassword, safeFileName, tidyPassword, unlockSteps } from './docLogic.js';
 import { saveFile } from './saveFile.js';
@@ -33,9 +34,13 @@ export default function UnlockPanel({ result, verified, revoked, password, onPas
     onUnlock(clean);
   }
 
-  function download() {
-    if (file) saveFile(safeFileName(file.name), file.data);
-  }
+  // A double click saves the file once.
+  const [download, downloading] = useBusyAction(
+    () => {
+      if (file) saveFile(safeFileName(file.name), file.data);
+    },
+    { holdMs: 1200 }
+  );
 
   return (
     <section className="ui-card doc-card" aria-labelledby="doc-unlock-title">
@@ -116,7 +121,7 @@ export default function UnlockPanel({ result, verified, revoked, password, onPas
             </Callout>
           )}
           <div className="ui-row">
-            <Button variant={verified ? 'primary' : 'ghost'} onClick={download}>
+            <Button variant={verified ? 'primary' : 'ghost'} onClick={download} pending={downloading}>
               <Icon name="download" size={18} />{' '}
               {verified ? `Download ${safeFileName(file.name)}` : `Download anyway, not verified: ${safeFileName(file.name)}`}
             </Button>

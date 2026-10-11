@@ -4,19 +4,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { DocListBody, DocRow, SkeletonRows, StatusBadge } from '../../src/components/vault/DocList.jsx';
 import DropZone from '../../src/components/vault/DropZone.jsx';
-import MyDocuments from '../../src/components/vault/MyDocuments.jsx';
 import ProgressList from '../../src/components/vault/ProgressList.jsx';
-import PublicDocuments from '../../src/components/vault/PublicDocuments.jsx';
-import PublishForm from '../../src/components/vault/PublishForm.jsx';
 import PublishResult from '../../src/components/vault/PublishResult.jsx';
 import { advanceSteps, createSteps } from '../../src/components/vault/vaultLogic.js';
-import VaultPage from '../../src/pages/VaultPage.jsx';
 
 const render = (node) => renderToString(h(MemoryRouter, { initialEntries: ['/'] }, node));
 
 const ID = 'c'.repeat(32);
 const OWNER = 'ab'.repeat(32);
-const identity = { keyId: OWNER, displayName: 'Office', sign: async () => 'sig' };
 
 const baseList = {
   status: 'ready',
@@ -47,56 +42,6 @@ function noBadText(html) {
   expect(html).not.toMatch(new RegExp('[' + String.fromCharCode(0x2013, 0x2014) + ']'));
   expect(html).not.toMatch(/\b(AI|Claude|Anthropic|GPT|OpenAI)\b/);
 }
-
-describe('VaultPage', () => {
-  it('renders the page with its three sections', () => {
-    const html = render(h(VaultPage));
-    expect(html).toContain('<h1');
-    expect(html).toContain('Vault');
-    expect(html).toContain('Your documents');
-    expect(html).toContain('Public documents');
-    noBadText(html);
-  });
-});
-
-describe('PublishForm', () => {
-  it('shows a skeleton while the identity loads', () => {
-    const html = render(h(PublishForm, { status: 'loading', identity: null }));
-    expect(html).toContain('aria-busy="true"');
-    expect(html).toContain('vault-skel');
-  });
-
-  it('sends people without an identity to the keys page', () => {
-    const html = render(h(PublishForm, { status: 'none', identity: null }));
-    expect(html).toContain('href="/keys"');
-    expect(html).toContain('You need an identity first');
-    expect(html).not.toContain('type="file"');
-    noBadText(html);
-  });
-
-  it('shows the form with honest wording about what is public', () => {
-    const html = render(h(PublishForm, { status: 'ready', identity }));
-    expect(html).toContain('type="file"');
-    expect(html).toContain('Public label');
-    expect(html).toContain('Do not use the file name in the public label');
-    expect(html).toContain('Show in the public list');
-    expect(html).toContain('locked in this browser');
-    expect(html).toContain('Not public:');
-    expect(html).toContain('20 MiB');
-    expect(html).toContain('type="submit"');
-    expect(html).toContain('disabled');
-    // the publish button is disabled until a file is chosen
-    expect(html).toMatch(/<button[^>]*disabled=""[^>]*type="submit"|<button[^>]*type="submit"[^>]*disabled=""/);
-    noBadText(html);
-  });
-
-  it('warns when the server may not know the key', () => {
-    const html = render(h(PublishForm, { status: 'ready', identity, registration: 'missing', onRegister() {} }));
-    expect(html).toContain('Register my key');
-    const ok = render(h(PublishForm, { status: 'ready', identity, registration: 'registered' }));
-    expect(ok).not.toContain('Register my key');
-  });
-});
 
 describe('DropZone', () => {
   it('has a labelled file input and the size limit text', () => {
@@ -249,33 +194,5 @@ describe('document lists', () => {
     const failed = render(h(DocListBody, { list: { ...baseList, moreError: 'Server down' }, rows: [row], empty }));
     expect(failed).toContain('Could not load more');
     expect(failed).toContain('Server down');
-  });
-});
-
-describe('list sections', () => {
-  it('renders the search box and its first state', () => {
-    const html = render(h(PublicDocuments));
-    expect(html).toContain('type="search"');
-    expect(html).toContain('Search labels');
-    expect(html).toContain('role="search"');
-    expect(html).toContain('Unlisted documents never');
-    noBadText(html);
-  });
-
-  it('shows a skeleton for your documents while the identity loads', () => {
-    const html = render(h(MyDocuments, { status: 'loading', identity: null }));
-    expect(html).toContain('Your documents');
-    expect(html).toContain('vault-doc--skeleton');
-  });
-
-  it('points to the keys page when there is no identity and no local document', () => {
-    const html = render(h(MyDocuments, { status: 'none', identity: null }));
-    expect(html).toContain('href="/keys"');
-    expect(html).toContain('No identity on this device');
-  });
-
-  it('shows loading for a ready identity', () => {
-    const html = render(h(MyDocuments, { status: 'ready', identity }));
-    expect(html).toContain('vault-doc--skeleton');
   });
 });

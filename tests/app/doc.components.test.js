@@ -8,7 +8,7 @@ import DocTimeline from '../../src/components/doc/DocTimeline.jsx';
 import ProgressList from '../../src/components/doc/ProgressList.jsx';
 import PublishVersion from '../../src/components/doc/PublishVersion.jsx';
 import RevokePanel from '../../src/components/doc/RevokePanel.jsx';
-import SharePanel from '../../src/components/doc/SharePanel.jsx';
+import FileDetails from '../../src/components/doc/FileDetails.jsx';
 import UnlockPanel from '../../src/components/doc/UnlockPanel.jsx';
 import DocumentPage from '../../src/pages/DocumentPage.jsx';
 import { verifyDocumentBundle } from '../../shared/verify.js';
@@ -203,55 +203,64 @@ describe('ProgressList', () => {
 });
 
 describe('owner tools', () => {
-  it('PublishVersion has the file, label and password options', async () => {
+  const identityOf = (f) => ({ keyId: f.owner.keyId, sign: noop });
+
+  it('PublishVersion asks for a file and, when the password is not known, for the password', async () => {
     const f = await fixture();
-    const html = render(h(PublishVersion, { docId: f.docId, head: { version: 2, recordHash: f.versions[1].recordHash }, identity: { keyId: f.owner.keyId, sign: noop }, unlockedWith: '', onPublished: noop }));
-    expect(html).toContain('Publish a new version');
+    const head = { version: 2, recordHash: f.versions[1].recordHash };
+    const html = render(h(PublishVersion, { docId: f.docId, head, identity: identityOf(f), password: '', onPublished: noop }));
     expect(html).toContain('type="file"');
-    expect(html).toContain('Keep the current document password');
-    expect(html).toContain('Use a new password');
-    expect(html).toContain('Lock and publish version 3');
-    expect(html).toContain('Unlock the file above first');
+    expect(html).toContain('Label (optional)');
+    expect(html).toContain('Publish version 3');
+    expect(html).toContain('File password');
+    expect(html).toContain('Use a new password instead');
+    expect(html).toContain('the same link keeps working');
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>(?:(?!<\/button>).)*Publish version 3/s);
   });
 
-  it('PublishVersion with a confirmed password asks only for a file', async () => {
+  it('PublishVersion with the password known (from the vault) never shows a password box', async () => {
     const f = await fixture();
-    const html = render(h(PublishVersion, { docId: f.docId, head: { version: 1, recordHash: f.versions[0].recordHash }, identity: { keyId: f.owner.keyId, sign: noop }, unlockedWith: 'ABCDEFGHJKLMNPQRSTUV', onPublished: noop }));
-    expect(html).not.toContain('Unlock the file above first. That confirms');
-    expect(html).toContain('Choose the new file.');
+    const head = { version: 1, recordHash: f.versions[0].recordHash };
+    const html = render(h(PublishVersion, { docId: f.docId, head, identity: identityOf(f), password: PW, onPublished: noop }));
+    expect(html).not.toContain('File password');
+    expect(html).not.toContain('Use a new password');
+    expect(html).not.toContain(PW);
+    expect(html).toContain('Publish version 2');
   });
 
-  it('RevokePanel explains that revoking is permanent and public and disables the button', async () => {
+  it('RevokePanel explains that withdrawing is permanent and public and disables the button', async () => {
     const f = await fixture();
-    const html = render(h(RevokePanel, { docId: f.docId, head: { version: 2, recordHash: f.versions[1].recordHash }, identity: { keyId: f.owner.keyId, sign: noop }, onRevoked: noop }));
+    const html = render(h(RevokePanel, { docId: f.docId, head: { version: 2, recordHash: f.versions[1].recordHash }, identity: identityOf(f), onRevoked: noop }));
     expect(html).toContain('permanent and public');
-    expect(html).toContain('Type REVOKE to confirm');
-    expect(html).toMatch(/<button[^>]*disabled[^>]*>(?:(?!<\/button>).)*Revoke this document/s);
-    expect(html).toContain('Write the reason for the revoke.');
+    expect(html).toContain('A short reason');
+    expect(html).toContain('I understand this cannot be undone.');
+    expect(html).not.toContain('Type REVOKE');
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>(?:(?!<\/button>).)*Withdraw file/s);
   });
 });
 
-describe('SharePanel', () => {
-  it('shows the verify-only link and asks for a password for the full link', async () => {
+describe('FileDetails', () => {
+  it('is a collapsed Details area with the full checks, the bundle download and the certificate button', async () => {
     const f = await fixture();
-    const html = render(h(SharePanel, { docId: f.docId, bundle: f.bundle, headVersion: 2, pinnedServerKeyId: '', password: '', confirmed: false }));
-    expect(html).toContain('/d/' + f.docId);
-    expect(html).not.toContain('#k=');
-    expect(html).toContain('Enter the document password above');
+    const html = render(h(FileDetails, { docId: f.docId, bundle: f.bundle, verification: f.verification, pinnedServerKeyId: '', open: false, onToggle: noop }));
+    expect(html).toContain('<details');
+    expect(html).not.toMatch(/<details[^>]* open/);
+    expect(html).toContain('<summary');
+    expect(html).toContain('Details');
+    expect(html).toContain('Verification result');
     expect(html).toContain('Download verification bundle');
+    expect(html).toContain('Print certificate');
+    expect(html).toContain('Ledger number');
+    expect(html).toContain('What this does and does not show');
+    expect(html).toContain('Latest here means');
   });
 
-  it('shows the full link with the password after the # sign when a password is known', async () => {
+  it('can be shown open and never prints a file password', async () => {
     const f = await fixture();
-    const html = render(h(SharePanel, { docId: f.docId, bundle: f.bundle, headVersion: 2, pinnedServerKeyId: '', password: PW, confirmed: true }));
-    expect(html).toContain('/d/' + f.docId + '#k=ABCDEFGHJKLMNPQRSTUV');
-    expect(html).not.toContain('has not been confirmed');
-  });
-
-  it('says when the password was not confirmed', async () => {
-    const f = await fixture();
-    const html = render(h(SharePanel, { docId: f.docId, bundle: f.bundle, headVersion: 2, pinnedServerKeyId: '', password: PW, confirmed: false }));
-    expect(html).toContain('has not been confirmed');
+    const html = render(h(FileDetails, { docId: f.docId, bundle: f.bundle, verification: f.verification, pinnedServerKeyId: '', open: true, onToggle: noop }));
+    expect(html).toMatch(/<details[^>]* open/);
+    expect(html).not.toContain('#k=');
+    expect(html).not.toContain(PW);
   });
 });
 

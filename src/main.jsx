@@ -5,6 +5,11 @@ import App from './App.jsx';
 import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
+import './styles/nav.css';
+import './styles/sheet.css';
+import './styles/otp.css';
+import './styles/welcome.css';
+import './styles/me.css';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

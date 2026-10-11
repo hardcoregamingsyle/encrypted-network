@@ -13,7 +13,9 @@ function remValue(text) {
 }
 
 const TOKEN_REM = {
-  '--tap-size': 2.75
+  '--tap-size': 2.75,
+  '--tabs-height': 4,
+  '--nav-height': 3.5
 };
 
 function sizeOf(text) {
@@ -44,6 +46,39 @@ describe('focus', () => {
   it('the sticky header does not cover focused or linked content', () => {
     const html = rules.find((r) => r.selector === 'html' && r.file.endsWith('base.css'));
     expect(declValue(html.body, 'scroll-padding-top')).toMatch(/nav-height/);
+  });
+
+  it('exactly one of the side menu and the tab bar is on screen at any width (they share the 56.25rem breakpoint)', () => {
+    // Both are in the markup, with different names. If one stayed visible next to the other, a screen reader would
+    // list two main navigations with the same four links.
+    const side = rules.filter((r) => r.selector === '.ui-sidenav');
+    const plainSide = side.find((r) => !r.media);
+    expect(declValue(plainSide.body, 'display')).toBe('none');
+    const wideSide = side.find((r) => r.media === '(min-width: 56.25rem)');
+    expect(declValue(wideSide.body, 'display')).toBe('flex');
+    const tabs = rules.filter((r) => r.selector === '.ui-tabbar');
+    expect(tabs.find((r) => !r.media && declValue(r.body, 'display') !== null)).toBeUndefined();
+    const wideTabs = tabs.find((r) => r.media === '(min-width: 56.25rem)');
+    expect(declValue(wideTabs.body, 'display')).toBe('none');
+  });
+
+  it('the screen header is sticky at the top and the tab bar is fixed at the bottom', () => {
+    const header = rules.find((r) => r.selector === '.ui-screen-header' && !r.media);
+    expect(declValue(header.body, 'position')).toBe('sticky');
+    expect(declValue(header.body, 'top')).toBe('0');
+    const tabs = rules.find((r) => r.selector === '.ui-tabbar' && !r.media);
+    expect(declValue(tabs.body, 'position')).toBe('fixed');
+    expect(declValue(tabs.body, 'bottom')).toBe('0');
+  });
+
+  it('DEFECT: the fixed tab bar and the floating button do not cover a control that has keyboard focus', () => {
+    // The sticky header is handled with scroll-padding-top. The tab bar (4rem) and the floating
+    // button are fixed at the bottom of the screen. Without scroll-padding-bottom the browser leaves a
+    // focused control where it is when it is already "in view", which can be right behind the bar
+    // (WCAG 2.2, 2.4.11 Focus Not Obscured). No rule sets scroll-padding-bottom.
+    const bottom = rules.find((r) => (r.selector === 'html' || r.selector === ':root') && declValue(r.body, 'scroll-padding-bottom') !== null);
+    expect(bottom, 'html has no scroll-padding-bottom to clear the fixed tab bar (tabs-height)').toBeTruthy();
+    expect(declValue(bottom.body, 'scroll-padding-bottom')).toMatch(/tabs-height/);
   });
 });
 
@@ -94,23 +129,62 @@ describe('units and zoom', () => {
 });
 
 describe('touch targets', () => {
+  // [selector, property]. Every one must exist as a plain (not media query) rule.
   const buttons = [
+    // buttons and form controls
     ['.ui-btn', 'min-height'],
     ['.ui-btn--sm', 'min-height'],
-    ['.ui-nav__toggle', 'height'],
-    ['.ui-nav__link', 'min-height'],
-    ['.ui-nav__chip', 'min-height'],
     ['.ui-toast__close', 'height'],
+    ['.ui-banner__link', 'min-height'],
+    ['.ui-sheet__close', 'min-height'],
+    ['.ui-sheet__close', 'width'],
+    // navigation: side menu, tab bar, back button, floating button
+    ['.ui-sidenav__brand', 'min-height'],
+    ['.ui-sidenav__link', 'min-height'],
+    ['.ui-sidenav__who', 'min-height'],
+    ['.ui-tabbar__link', 'min-height'],
+    ['.ui-screen-header__back', 'min-height'],
+    ['.ui-screen-header__back', 'width'],
+    ['.ui-fab', 'min-height'],
+    ['.ui-fab--compact', 'width'],
+    // lists and pages
+    ['.ui-item', 'min-height'],
+    ['.ui-otp__box', 'min-height'],
+    ['.files-seg__btn', 'min-height'],
+    ['.me-row', 'min-height'],
+    ['.me-switch__btn', 'min-height'],
+    ['.me-switch__btn', 'width'],
+    ['.doc-choice', 'min-height'],
+    ['.doc-actions > .ui-btn', 'min-height'],
+    ['.doc-details > summary', 'min-height'],
+    ['.welcome__actions .ui-btn', 'min-height'],
+    ['.welcome__links a', 'min-height'],
+    ['.signin__back', 'min-height'],
+    // chat
     ['.chat-newbtn', 'min-height'],
+    ['.chat-iconbtn', 'min-height'],
+    ['.chat-iconbtn', 'width'],
+    ['.chat-send', 'min-height'],
+    ['.chat-send', 'width'],
+    ['.chat-strip__more', 'min-height'],
+    ['.chat-msg__raw > summary', 'min-height'],
+    ['.chat-menu__who > summary', 'min-height'],
+    // verify
     ['.verify-toc a', 'min-height'],
-    ['.verify-details-toggle > summary', 'min-height']
+    ['.verify-details-toggle > summary', 'min-height'],
+    ['.verify-advanced__summary', 'min-height'],
+    ['.vsum__details > summary', 'min-height'],
+    ['.vq-input', 'min-height'],
+    ['.vq-go', 'min-height']
   ];
 
-  it('every control is at least 24 px high (WCAG 2.2, 2.5.8)', () => {
+  const plain = (selector) => rules.filter((r) => r.selector === selector && !r.media);
+
+  it('every control is at least 24 px high and wide where it sets a size (WCAG 2.2, 2.5.8)', () => {
     const small = [];
     for (const [selector, prop] of buttons) {
-      const found = rules.filter((r) => r.selector === selector && !r.media);
-      expect(found.length, selector).toBeGreaterThan(0);
+      const found = plain(selector).filter((r) => declValue(r.body, prop) !== null);
+      expect(found.length, selector + ' ' + prop).toBeGreaterThan(0);
       const px = sizeOf(declValue(found[0].body, prop));
       if (px === null || px < 24) small.push(`${selector} ${prop} ${px}`);
     }
@@ -120,12 +194,38 @@ describe('touch targets', () => {
   it('the main controls reach the 44 px recommendation, and the known smaller ones are listed here', () => {
     const below = [];
     for (const [selector, prop] of buttons) {
-      const r = rules.find((x) => x.selector === selector && !x.media);
+      const r = plain(selector).find((x) => declValue(x.body, prop) !== null);
       const px = sizeOf(declValue(r.body, prop));
       if (px < 44) below.push(`${selector}=${px}`);
     }
-    // These are small on purpose (compact buttons). If a new one appears, decide if it is fine.
-    expect(below.sort()).toEqual(['.chat-newbtn=36', '.ui-btn--sm=36', '.ui-toast__close=32']);
+    // These are small on purpose (compact buttons, for screens with a mouse). If a new one appears, decide if it is fine.
+    // On a phone width both are raised to 44, see the next test.
+    expect(below.sort()).toEqual(['.ui-btn--sm=36', '.ui-toast__close=32']);
+  });
+
+  it('on a narrow screen the compact buttons and the toast close button are raised to 44 px', () => {
+    for (const selector of ['.ui-btn--sm', '.ui-toast__close']) {
+      const narrow = rules.filter((r) => r.selector === selector && /max-width/.test(r.media));
+      expect(narrow.length, selector).toBeGreaterThan(0);
+      const sizes = ['min-height', 'height'].map((p) => sizeOf(declValue(narrow[0].body, p))).filter((v) => v !== null);
+      expect(sizes.length, selector).toBeGreaterThan(0);
+      expect(Math.min(...sizes), selector).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it('the plain text fields, selects and the chat box are 44 px high', () => {
+    for (const selector of ["input:where(:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']))", 'select', 'textarea.chat-compose__input']) {
+      const r = plain(selector).find((x) => declValue(x.body, 'min-height') !== null);
+      expect(r, selector).toBeTruthy();
+      expect(sizeOf(declValue(r.body, 'min-height')), selector).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  it('the tap size token is still 44 px, and the tab bar is taller than that', () => {
+    const tokens = css('src/styles/tokens.css');
+    expect(tokens).toMatch(/--tap-size:\s*2\.75rem;/);
+    expect(tokens).toMatch(/--tabs-height:\s*4rem;/);
+    expect(TOKEN_REM['--tap-size'] * 16).toBe(44);
   });
 });
 
@@ -155,7 +255,7 @@ describe('print', () => {
     expect(declValue(root.body, '--color-text')).toBe('#000000');
     expect(declValue(root.body, 'color-scheme')).toBe('light');
     const hide = rules.filter((r) => r.media.includes('print') && /none/.test(declValue(r.body, 'display') || '')).map((r) => r.selector);
-    for (const s of ['.ui-header', '.ui-footer', '.ui-skip', '.ui-toasts', '.ui-btn', 'button']) expect(hide).toContain(s);
+    for (const s of ['.ui-header', '.ui-footer', '.ui-skip', '.ui-toasts', '.ui-btn', 'button', '.ui-sidenav', '.ui-tabbar', '.ui-fab', '.ui-screen-header', '.ui-banner', '.ui-sheet-root']) expect(hide).toContain(s);
   });
 
   it('print keeps status colours dark enough on white even when the system is in dark mode', () => {
@@ -219,7 +319,20 @@ describe('long unbroken strings and narrow screens', () => {
       '.chat-anchor__text',
       '.ui-kv dd',
       '.doc-card',
-      '.verify-section__body'
+      '.verify-section__body',
+      '.ui-shell__body',
+      '.ui-screen-header__text',
+      '.ui-item__body',
+      '.ui-sidenav__who-text',
+      '.chat-row__link',
+      '.chat-msg__col',
+      '.chat-bubble',
+      '.me-row__text',
+      '.me-profile__text',
+      '.me-switch__text',
+      '.files-body',
+      '.doc-body',
+      '.vsum__text'
     ];
     for (const selector of must) {
       const r = rules.find((x) => x.selector === selector);

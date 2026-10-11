@@ -1,6 +1,17 @@
 // One place to import the shared components from.
 export { default as Layout } from './Layout.jsx';
 export { default as Nav } from './Nav.jsx';
+export { default as SideNav } from './SideNav.jsx';
+export { default as BottomTabs, TabBar } from './BottomTabs.jsx';
+export { default as ScreenHeader } from './ScreenHeader.jsx';
+export { default as Sheet } from './Sheet.jsx';
+export { default as Fab } from './Fab.jsx';
+export { default as Avatar } from './Avatar.jsx';
+export { default as ListItem, ItemList } from './ListItem.jsx';
+export { default as OtpInput } from './OtpInput.jsx';
+export { default as Skeleton } from './Skeleton.jsx';
+export { default as QuickStartForm } from './QuickStartForm.jsx';
+export { AuthPromptProvider, useSignInPrompt } from './AuthPrompt.jsx';
 export { default as ErrorBoundary } from './ErrorBoundary.jsx';
 export { default as Button } from './Button.jsx';
 export { default as CopyButton, copyText } from './CopyButton.jsx';

@@ -124,6 +124,28 @@ for (const g of ['--gradient-accent', '--gradient-accent-hover']) {
   }
 }
 
+// chat app feel: avatars, message bubbles, tabs, unread count (added with the v3 shell)
+for (let i = 1; i <= 8; i++) add(`.ui-avatar--c${i} (white initials on avatar colour ${i})`, 'on-avatar', `avatar-${i}`);
+add('own message bubble text', 'bubble-own-text', 'bubble-own');
+add('own message bubble time and ticks', 'bubble-own-meta', 'bubble-own');
+add('other message bubble text', 'bubble-other-text', 'bubble-other');
+add('muted time under an other message bubble', 'text-muted', 'bubble-other');
+add('date separators and notes on the chat wallpaper (muted on chat-bg)', 'text-muted', 'chat-bg');
+add('text on the chat wallpaper', 'text', 'chat-bg');
+add('.ui-tabbar__link idle (tab-idle on tab bar)', 'tab-idle', 'tab-bg');
+add('.ui-tabbar__link current (tab-active on tab bar)', 'tab-active', 'tab-bg');
+add('.ui-count unread badge', 'badge-text', 'badge-bg');
+add('.ui-banner (text on info bg)', 'text', 'info-bg');
+add('.ui-item__sub and .ui-item__meta on a hovered row (muted on tint over surface)', 'text-muted', ['surface', 'accent-tint']);
+add('.ui-item__sub on the page background (muted on bg)', 'text-muted', 'bg');
+add('.ui-sheet__desc (muted on surface)', 'text-muted', 'surface');
+// the plain language verdict card: the quiet lines sit on the tone background of the card
+for (const t of ['good', 'warn', 'bad']) add(`.vsum__trust (muted on ${t} bg)`, 'text-muted', `${t}-bg`);
+add('.ui-banner__link (accent-text on info bg)', 'accent-text', 'info-bg');
+add('.ui-otp__error (bad on surface)', 'bad', 'surface');
+add('.me-switch__knob thumb when off (muted on surface-3)', 'text-muted', 'surface-3', UI);
+add('.me-switch__knob thumb when on (surface on accent)', 'surface', 'accent', UI);
+
 // ---------- non text pairs (3:1) ----------
 for (const s of ['bg', 'surface', 'surface-2', 'surface-3']) add(`focus ring on ${s}`, 'focus', s, UI);
 add('focus ring on tint over surface (chat reply bar, hovered rows)', 'focus', ['surface', 'accent-tint'], UI);
@@ -143,6 +165,11 @@ add('.keys-strength level 1 bar (bad on surface)', 'bad', 'surface', UI);
 add('.keys-strength level 2 bar (warn on surface)', 'warn', 'surface', UI);
 add('.keys-strength level 3 and 4 bars (good on surface)', 'good', 'surface', UI);
 add('.verify-alarm border (bad on page background)', 'bad', 'bg', UI);
+add('focus ring on the chat wallpaper', 'focus', 'chat-bg', UI);
+add('.me-switch__knob border when off (border-strong on surface)', 'border-strong', 'surface', UI);
+add('.me-switch__knob when on (accent on surface)', 'accent', 'surface', UI);
+add('.ui-otp__box border on surface-2', 'border-strong', 'surface-2', UI);
+add('.ui-tabbar__link current marker (tab-active on tab bar)', 'tab-active', 'tab-bg', UI);
 
 function evaluate(mode) {
   const rows = [];

@@ -1,0 +1,142 @@
+/* Sheet: a bottom sheet on phones, a centred dialog on wider screens. */
+
+body.ui-scroll-locked {
+  overflow: hidden;
+}
+
+.ui-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scrim);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.ui-sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--color-scrim);
+  animation: ui-sheet-fade 0.18s ease-out;
+}
+
+.ui-sheet {
+  position: relative;
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--sheet-width);
+  max-height: 92vh;
+  max-height: 92dvh;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-lg);
+  animation: ui-sheet-up 0.2s ease-out;
+}
+
+/* the panel only gets focus from script, when it has no control to give it to: no ring around the whole panel */
+.ui-sheet:focus {
+  outline-color: transparent;
+}
+
+.ui-sheet__grip {
+  flex: none;
+  align-self: center;
+  width: 2.5rem;
+  margin: var(--space-1) 0 0;
+  border-top: 4px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+}
+
+.ui-sheet__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+}
+
+.ui-sheet__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.ui-sheet__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-size);
+  min-height: var(--tap-size);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ui-sheet__close:hover {
+  background: var(--color-surface-3);
+}
+
+.ui-sheet__desc {
+  flex: none;
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.ui-sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-1) var(--space-3) var(--space-3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.ui-sheet__foot {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.ui-sheet__foot > .ui-btn {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 40rem) {
+  .ui-sheet-root {
+    align-items: center;
+  }
+
+  .ui-sheet {
+    border-radius: var(--radius-lg);
+  }
+
+  .ui-sheet__grip {
+    display: none;
+  }
+
+  .ui-sheet__head {
+    padding-top: var(--space-2);
+  }
+}
+
+@keyframes ui-sheet-up {
+  from {
+    transform: translateY(2rem);
+    opacity: 0;
+  }
+}
+
+@keyframes ui-sheet-fade {
+  from {
+    opacity: 0;
+  }
+}

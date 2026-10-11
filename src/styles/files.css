@@ -1,0 +1,209 @@
+/* Files screen and the Add file sheet. Class names start with files-. */
+
+.files-page {
+  min-width: 0;
+}
+
+.files-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  /* room under the last row for the floating + button and the bottom tabs */
+  padding-bottom: calc(var(--tabs-height) + 6rem);
+}
+
+/* ---------- Mine / Public switch ---------- */
+
+.files-seg {
+  display: flex;
+  gap: var(--space-0);
+  padding: var(--space-0);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-3);
+}
+
+.files-seg__btn {
+  flex: 1 1 0;
+  min-height: var(--tap-size);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.files-seg__btn:hover {
+  color: var(--color-text);
+}
+
+.files-seg__btn.is-on {
+  background: var(--color-surface);
+  color: var(--color-accent-text);
+  /* a 2 px accent line around the chosen side, so it is not told apart by a faint fill alone */
+  box-shadow: inset 0 0 0 2px var(--color-accent), var(--shadow-sm);
+  font-weight: 800;
+}
+
+/* ---------- search ---------- */
+
+.files-search input {
+  width: 100%;
+  min-height: var(--tap-size);
+}
+
+/* ---------- list ---------- */
+
+.files-list {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.files-list .ui-items__row:last-child {
+  border-bottom: 0;
+}
+
+.files-row .ui-item__trail {
+  gap: var(--space-1);
+}
+
+/* the list is reloading: the text stays at full strength, only the icons are dimmed */
+.files-stale {
+  cursor: progress;
+}
+
+.files-stale .files-icon {
+  opacity: 0.6;
+}
+
+.files-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+
+.files-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+}
+
+.files-icon--pdf {
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+}
+
+.files-icon--image,
+.files-icon--doc {
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.files-icon--sheet {
+  background: var(--color-good-bg);
+  color: var(--color-good);
+}
+
+.files-icon--slides {
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+}
+
+.files-icon--audio,
+.files-icon--video {
+  background: var(--color-accent-tint);
+  color: var(--color-accent-text);
+}
+
+.files-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+/* ---------- Add file sheet ---------- */
+
+.files-add {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.files-add__set {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.files-add__hint {
+  display: block;
+}
+
+.files-add__progress {
+  min-height: 1.5rem;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-weight: 650;
+}
+
+.files-done {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.files-done__lead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.files-done__tick {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--color-good-bg);
+  color: var(--color-good);
+}
+
+.files-done__text {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.files-done__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.files-done__actions > .ui-btn {
+  flex: 1 1 8rem;
+}
+
+@media (min-width: 56.25rem) {
+  .files-body {
+    padding-bottom: 6rem;
+  }
+}

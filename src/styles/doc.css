@@ -355,3 +355,226 @@
     font-weight: 700;
   }
 }
+
+/* ---------- file page (route /d/:docId) ---------- */
+
+.doc-page {
+  min-width: 0;
+}
+
+.doc-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-bottom: calc(var(--tabs-height) + var(--space-4));
+}
+
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.doc-actions > .ui-btn {
+  flex: 1 1 10rem;
+  min-height: 3.25rem;
+  font-size: var(--text-md);
+}
+
+.doc-actions__note {
+  margin: 0;
+}
+
+.doc-ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.doc-ask__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.doc-ask__row input {
+  flex: 1 1 14rem;
+  min-width: 0;
+  min-height: var(--tap-size);
+}
+
+.doc-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.doc-section__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.doc-versions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.doc-versions__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.doc-versions__item:last-child {
+  border-bottom: 0;
+}
+
+.doc-versions__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin-top: 0.125rem;
+  border-radius: 50%;
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+}
+
+.is-withdrawn .doc-versions__mark {
+  background: var(--color-warn-bg);
+  color: var(--color-warn);
+}
+
+.doc-versions__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.doc-versions__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+  font-weight: 650;
+}
+
+.doc-versions__sub {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.doc-details {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.doc-details > summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-size);
+  padding: 0 var(--space-2);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.doc-details__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-2) var(--space-2);
+}
+
+.doc-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.doc-form__key {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.doc-choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.doc-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 4rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.doc-choice:hover {
+  background: var(--color-accent-tint);
+}
+
+.doc-choice__icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-tint);
+  color: var(--color-accent-text);
+}
+
+.doc-choice--danger .doc-choice__icon {
+  background: var(--color-bad-bg);
+  color: var(--color-bad);
+}
+
+.doc-choice__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.doc-choice__title {
+  font-weight: 650;
+}
+
+.doc-choice__sub {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (min-width: 56.25rem) {
+  .doc-body {
+    padding-bottom: var(--space-4);
+  }
+}

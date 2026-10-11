@@ -108,7 +108,7 @@ export function slugifyTitle(title) {
   if (typeof title !== 'string') return '';
   let s = title
     .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
@@ -190,6 +190,63 @@ export function sortChannels(channels) {
     .sort((a, b) => stamp(b) - stamp(a) || (a.channelId < b.channelId ? -1 : 1));
 }
 
+// The new chat form: a title and an optional linked file (id or link). The chat id is made for the
+// person, see newChannelId. Returns { ok, values: { title, docId }, errors: { title?, docId? } }.
+export function checkNewChatInput({ title, docId } = {}) {
+  const res = checkChannelInput({ title, channelId: 'general', docId });
+  const errors = {};
+  if (res.errors.title) errors.title = res.errors.title.replace(/^The title/, 'The chat name');
+  if (res.errors.docId) errors.docId = 'This is not a file id. Paste the file link or its 32 character id.';
+  return { ok: Object.keys(errors).length === 0, values: { title: res.values.title, docId: res.values.docId }, errors };
+}
+
+function randomHex(n) {
+  const bytes = new Uint8Array(Math.ceil(n / 2));
+  globalThis.crypto.getRandomValues(bytes);
+  let out = '';
+  for (const b of bytes) out += b.toString(16).padStart(2, '0');
+  return out.slice(0, n);
+}
+
+// A chat id for a title: the readable part of the title plus 4 random hex characters, so two chats
+// with the same title never collide and nobody has to think about ids. Always a valid channel id.
+// random(n) gives n hex characters and can be replaced by tests.
+export function newChannelId(title, random = randomHex) {
+  const base = slugifyTitle(typeof title === 'string' ? title : '').slice(0, 30).replace(/-+$/g, '') || 'chat';
+  const id = `${base}-${random(4)}`;
+  return isChannelId(id) ? id : `chat-${random(8)}`;
+}
+
+// The text under a chat title in the list: "Name: message". Both fields come from the server and are
+// not signature checked, so this is plain information. Empty when nobody wrote yet.
+export function channelPreview(channel) {
+  if (!channel || typeof channel !== 'object') return '';
+  const text = typeof channel.lastText === 'string' ? channel.lastText : '';
+  const name = typeof channel.lastSignerName === 'string' ? channel.lastSignerName : '';
+  const body = text.replace(/\s+/g, ' ').trim();
+  if (!body) return '';
+  const chars = Array.from(body);
+  const cut = chars.length > 80 ? chars.slice(0, 80).join('').trimEnd() + '...' : body;
+  const who = name.replace(/\s+/g, ' ').trim();
+  return who ? `${who}: ${cut}` : cut;
+}
+
+// Search on the chat list: every word has to appear in the title, the id or the preview. Case and
+// accents do not matter.
+export function filterChannels(channels, query) {
+  const list = Array.isArray(channels) ? channels : [];
+  const fold = (s) => (typeof s === 'string' ? s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase() : '');
+  const words = fold(typeof query === 'string' ? query : '')
+    .split(/\s+/)
+    .filter(Boolean);
+  if (words.length === 0) return list;
+  return list.filter((c) => {
+    if (!c || typeof c !== 'object') return false;
+    const hay = [fold(c.title), fold(c.channelId), fold(channelPreview(c))].join(' ');
+    return words.every((w) => hay.includes(w));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Wording for errors
 
@@ -206,10 +263,10 @@ export function describeApiError(err, what = 'do that') {
     };
   }
   if (code === 'unknown_signer') {
-    return { message: 'The server does not know your identity yet. Open the Identity page to register it, then try again.', hint: 'keys' };
+    return { message: 'The server does not know your key yet. Try again in a moment. If it keeps happening, sign out and sign in again.', hint: 'signin' };
   }
   if (code === 'bad_signature') {
-    return { message: 'The server could not verify your signature. Check the Identity page, your stored key may not match.', hint: 'keys' };
+    return { message: 'The server could not verify your signature. Sign out and sign in again on this device.', hint: 'signin' };
   }
   if (code === 'expired') {
     return { message: 'The server says the time on this device is more than 10 minutes away from its own time. Fix the clock and try again.', hint: '' };
@@ -355,6 +412,8 @@ export async function checkAnchor({ headEntry, identities, page, channelId, pin 
     stale: false,
     badSignature: false,
     pinMismatch: false,
+    // true when the checkpoint signature was checked against the server key that came with the answer
+    serverChecked: false,
     warnings: []
   };
   if (!payload) return out;
@@ -370,7 +429,10 @@ export async function checkAnchor({ headEntry, identities, page, channelId, pin 
     if (server && typeof server === 'object') {
       const sigOk = await verifyCheckpoint(server.publicKey, cp);
       if (!sigOk) out.badSignature = true;
-      else if (out.pinned && (await keyIdOf(server.publicKey)) !== pin) out.pinMismatch = true;
+      else {
+        out.serverChecked = true;
+        if (out.pinned && (await keyIdOf(server.publicKey)) !== pin) out.pinMismatch = true;
+      }
     }
   } catch {
     out.badSignature = true;
@@ -420,8 +482,8 @@ export function describeAnchor(anchor, { checking = false } = {}) {
     );
     lines.push(
       anchor.pinned
-        ? 'The checkpoint key is the server key you pinned.'
-        : 'You have not pinned a server key, so this only proves the key the server presented. You can pin it on the Verify page.'
+        ? 'The checkpoint key is the server key you pinned or saw on your first visit.'
+        : 'You have not pinned a server key, so this only proves the key the server presented. You can pin it on the Verify page, under Advanced.'
     );
     return { tone: 'good', title: 'Latest messages tied to the server head', lines };
   }
@@ -431,10 +493,10 @@ export function describeAnchor(anchor, { checking = false } = {}) {
   }
   if (anchor.pinMismatch) {
     lines.push(
-      'The checkpoint was signed by a different server key than the one you pinned. This may be a different server posing as the one you trust. Do not rely on this channel until you know why.'
+      "The checkpoint was signed by a different server key than the one you pinned or saw on your first visit. The server's identity changed since your last visit. This may be a different server posing as the one you trust. Do not rely on this chat until you know why."
     );
     for (const w of anchor.warnings) if (!lines.includes(w)) lines.push(w);
-    return { tone: 'bad', title: 'STOP: the server key is not the pinned key', lines };
+    return { tone: 'bad', title: "The server's identity changed since your last visit", lines };
   }
   if (anchor.badSignature) {
     lines.push('The signature on the checkpoint does not match the server key that came with it, so the checkpoint was ignored.');

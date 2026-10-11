@@ -56,6 +56,10 @@ const { ChannelCard } = await import('../../../src/components/chat/ChannelList.j
 const { default: DocTimeline } = await import('../../../src/components/doc/DocTimeline.jsx');
 const { default: DocSummary } = await import('../../../src/components/doc/DocSummary.jsx');
 const { default: UnlockPanel } = await import('../../../src/components/doc/UnlockPanel.jsx');
+const { NAV_ITEMS } = await import('../../../src/components/navConfig.js');
+const { safeNextPath } = await import('../../../src/lib/format.js');
+const { createVault, localClear, localList, localSet } = await import('../../../src/lib/vault.js');
+const { getLastSeen, markSeen, unreadCount } = await import('../../../src/lib/unread.js');
 
 const FAST = 100000;
 const PASSWORD = 'ABCD-EFGH-JKLM-NPQR-STUV';
@@ -756,10 +760,114 @@ describe('source scan: injection and leakage patterns', () => {
     }
     expect(literal.length).toBeGreaterThan(10);
     expect(literal.filter((l) => !/ [`"'][/#]/.test(l))).toEqual([]);
-    // the only non literal targets: the router object built by documentRoute (path /d/<id>, hash)
-    // and the fixed menu items in Nav.jsx
-    expect(dynamic.filter((d) => !/documentRoute\(|Nav\.jsx to=\{item\.to\}/.test(d))).toEqual([]);
-    expect(code.find((c) => /Nav\.jsx$/.test(c.f)).text).toMatch(/to: '\/'/);
+
+    // The only non literal targets, each one with the reason it is safe (checked below):
+    //   documentRoute(...)                          the router object for /d/<id> built in vaultLogic.js
+    //   BottomTabs.jsx and SideNav.jsx item.to      the fixed list in navConfig.js
+    //   Fab.jsx to={to}                             the `to` of the floating button
+    //   ListItem.jsx to={to}                        the `to` of a list row
+    //   ScreenHeader.jsx to={back}                  the `back` of a screen header
+    //   MePage.jsx to={to}                          the `to` of a row in Me
+    //   SignInPage.jsx to={next}                    the `next` of the address, cleaned by safeNextPath
+    const allowed = [
+      /documentRoute\(/,
+      /\\components\\(?:BottomTabs|SideNav)\.jsx to=\{item\.to\}/,
+      /\\components\\Fab\.jsx to=\{to\}/,
+      /\\components\\ListItem\.jsx to=\{to\}/,
+      /\\components\\ScreenHeader\.jsx to=\{back\}/,
+      /\\pages\\MePage\.jsx to=\{to\}/,
+      /\\pages\\SignInPage\.jsx to=\{next\}/
+    ];
+    expect(dynamic.filter((d) => !allowed.some((re) => re.test(d)))).toEqual([]);
+  });
+
+  it('the fixed menu items are all local paths, and no menu item is built from input', () => {
+    for (const item of NAV_ITEMS) {
+      expect(item.to, item.id).toMatch(/^\/[a-z]*$/);
+    }
+    const nav = code.find((c) => /navConfig\.js$/.test(c.f)).text;
+    expect(nav).toMatch(/export const NAV_ITEMS = Object\.freeze\(\[/);
+    expect(Object.isFrozen(NAV_ITEMS)).toBe(true);
+    // both menus read the same frozen list and nothing else
+    for (const file of ['BottomTabs.jsx', 'SideNav.jsx']) {
+      const text = code.find((c) => c.f.endsWith('\\components\\' + file)).text;
+      expect(text, file).toMatch(/NAV_ITEMS\.map\(\(item\) =>/);
+    }
+  });
+
+  it('every place that fills a link or a back button with a variable is given only local path literals', () => {
+    // callers of the components above: Fab, ListItem, ScreenHeader (back, backTo) and the Row in MePage
+    const bad = [];
+    for (const c of code) {
+      const name = c.f.replace(ROOT, '');
+      for (const m of c.text.matchAll(/<(Fab|ListItem|ScreenHeader|Row)\b(?:=>|[^>])*?>/gs)) {
+        const tag = m[0];
+        for (const prop of tag.matchAll(/\b(to|back|backTo)=(?:"([^"]*)"|\{([^}]*)\})/g)) {
+          const [, key, literalValue, expr] = prop;
+          if (literalValue !== undefined && !/^\/[^/\\]/.test(literalValue)) bad.push(name + ' ' + key + '="' + literalValue + '"');
+          // back={true}, back (a bare flag) and the router object of documentRoute are fine; other expressions are not
+          // backTarget and backTo carry one of two path literals, see the next test
+          if (expr !== undefined && !/^(true|false|undefined)$/.test(expr.trim()) && !/documentRoute\(/.test(expr) && !/^(backTarget|backTo)$/.test(expr.trim())) {
+            // inside the generic components themselves the expression is the prop being passed on
+            if (!/\\components\\(Fab|ListItem|ScreenHeader)\.jsx$/.test(c.f) && !/dead \?/.test(expr)) bad.push(name + ' ' + key + '={' + expr + '}');
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('the back target of the file page is one of two path literals, never anything taken from the address or the server', () => {
+    const page = code.find((c) => /pages\\DocumentPage\.jsx$/.test(c.f)).text;
+    expect(page).toMatch(/const backTarget = signedIn \? '\/files' : '\/verify';/);
+    const view = code.find((c) => /doc\\FileView\.jsx$/.test(c.f)).text;
+    expect(view).toMatch(/backTo = '\/verify'/);
+  });
+
+  it('the address of a sign in page can send a person only to a path inside the app', () => {
+    // SignInPage reads ?next= from the address, which anybody can write. Navigate and navigate() get safeNextPath(...)
+    const page = code.find((c) => /pages\\SignInPage\.jsx$/.test(c.f)).text;
+    expect(page).toMatch(/const next = safeNextPath\(params\.get\('next'\)\);/);
+    for (const m of page.matchAll(/navigate\(([^,)]+)/g)) expect(m[1].trim()).toBe('next');
+    for (const bad of [
+      'https://evil.example/',
+      '//evil.example/',
+      '/\\evil.example',
+      'javascript:alert(1)',
+      'data:text/html,x',
+      '\\\\evil',
+      '/ok\npath',
+      '/ok\tpath',
+      '/ok\u0000',
+      'evil',
+      '',
+      null,
+      undefined,
+      42,
+      '/' + 'a'.repeat(400)
+    ]) {
+      expect(safeNextPath(bad), String(bad)).toBe('/chats');
+    }
+    expect(safeNextPath('/files?tab=public')).toBe('/files?tab=public');
+    expect(safeNextPath('/signin?next=/files')).toBe('/chats');
+  });
+
+  it('every navigate() call and every <Navigate> in the app sends to a literal path, a fixed template, or the cleaned next', () => {
+    const bad = [];
+    for (const c of code) {
+      const name = c.f.replace(ROOT, '');
+      for (const m of c.text.matchAll(/\bnavigate\(((?:[^()]|\([^()]*\))*)\)/g)) {
+        const arg = m[1].split(',')[0].trim();
+        const ok = /^'\/[^']*'$/.test(arg) || /^`\/chats\/\$\{encodeURIComponent\([^)]*\)\}`$/.test(arg) || arg === 'next' || arg === '-1' || arg === 'backTo' || /^'\/signin\?next=' \+ encodeURIComponent\(next\)$/.test(arg);
+        if (!ok) bad.push(name + ' navigate(' + arg + ')');
+      }
+      for (const m of c.text.matchAll(/<Navigate to=(\{[^}]*\}|"[^"]*")/g)) {
+        const arg = m[1];
+        const ok = /^"\/[a-z/]*"$/.test(arg) || arg === '{next}' || /^\{'\/chats\/' \+ encodeURIComponent\(channelId \|\| ''\)\}$/.test(arg);
+        if (!ok) bad.push(name + ' <Navigate to=' + arg + '>');
+      }
+    }
+    expect(bad).toEqual([]);
   });
 
   it('the app only logs one thing: the error object of the error boundary', () => {
@@ -768,13 +876,57 @@ describe('source scan: injection and leakage patterns', () => {
     expect(hits).toEqual(['\\components\\ErrorBoundary.jsx console.error(error)']);
   });
 
-  it('browser storage holds only the pin, the local document list, the newest seen heads and the key store', () => {
-    const keys = [];
-    for (const c of code) for (const m of c.text.matchAll(/(?:localStorage|sessionStorage)/g)) keys.push(c.f.replace(ROOT, ''));
-    expect([...new Set(keys)].sort()).toEqual(['\\lib\\headStore.js', '\\lib\\localDocs.js', '\\lib\\pin.js']);
+  it('browser storage holds only the pin and the remembered server key, the local document list, the newest seen heads, the last seen message of each chat and the owner file passwords', () => {
+    const files = new Set();
+    for (const c of code) for (const m of c.text.matchAll(/(?:localStorage|sessionStorage)/g)) files.add(c.f.replace(ROOT, ''));
+    // vault.js: the passwords of the owner's own files for Quick start and Strict accounts (and the copy kept when the
+    // account cannot be reached). It is on purpose and the screens say so, see "what the account screens promise".
+    // unread.js: the number of the last message seen in each chat.
+    // sessionStore.js: the address typed at sign in, in sessionStorage (this tab only, gone when the tab closes and at
+    // sign out), so that "Confirm it is you" can send the new code without asking for the address again.
+    expect([...files].sort()).toEqual(['\\lib\\headStore.js', '\\lib\\localDocs.js', '\\lib\\pin.js', '\\lib\\sessionStore.js', '\\lib\\unread.js', '\\lib\\vault.js']);
+
+    // every entry has a fixed name, and nothing else is ever written
+    const names = {};
+    for (const c of code) {
+      for (const m of c.text.matchAll(/'(hrdlock\.[A-Za-z0-9._]+)'/g)) (names[c.f.replace(ROOT, '')] ||= []).push(m[1]);
+    }
+    expect(names).toEqual({
+      '\\lib\\headStore.js': ['hrdlock.seenHeads'],
+      '\\lib\\localDocs.js': ['hrdlock.localDocs'],
+      '\\lib\\pin.js': ['hrdlock.pinnedServerKeyId', 'hrdlock.rememberedServerKeyId'],
+      '\\lib\\sessionStore.js': ['hrdlock.signin.email'],
+      '\\lib\\unread.js': ['hrdlock.lastSeen.v1'],
+      '\\lib\\vault.js': ['hrdlock.vault.v1']
+    });
+    for (const c of code) {
+      const f = c.f.replace(ROOT, '');
+      const writes = [...c.text.matchAll(/\.setItem\(\s*([^,]+),/g)].map((m) => m[1].trim());
+      if (f.endsWith('\\lib\\pin.js')) expect(writes.sort()).toEqual(['KEY', 'REMEMBERED_KEY']);
+      else if (f.endsWith('\\lib\\vault.js')) expect(writes).toEqual(['STORAGE_KEY']);
+      else if (f.endsWith('\\lib\\sessionStore.js')) expect(writes).toEqual(['EMAIL_KEY']);
+      else if (/headStore|localDocs|unread/.test(f)) expect(writes).toEqual(['KEY']);
+      else expect(writes, f).toEqual([]);
+    }
+
     // ids, numbers and hashes only
     expect(code.find((c) => /headStore\.js$/.test(c.f)).text).toMatch(/passwords or file names/);
     expect(code.find((c) => /localDocs\.js$/.test(c.f)).text).toMatch(/NEVER|never/);
+    // the last seen record holds numbers, no names or text
+    const unread = code.find((c) => /unread\.js$/.test(c.f)).text;
+    expect(unread).toMatch(/Number\.isSafeInteger\(v\)/);
+    expect(unread).toMatch(/Number\.isSafeInteger\(seq\)/);
+    // the vault documents who keeps what
+    const vault = code.find((c) => /vault\.js$/.test(c.f)).text;
+    expect(vault).toMatch(/Strict account\s+the account keeps nothing, passwords stay on this device only/);
+    expect(vault).toMatch(/Quick start\s+passwords stay on this device only/);
+    // the signing key itself is never written to localStorage: it lives in the key store (IndexedDB)
+    for (const c of code) {
+      if (/\\lib\\(vault|unread|pin|headStore|localDocs)\.js$/.test(c.f)) {
+        expect(c.text, c.f).not.toMatch(/privateJwk|exportPrivateJwk|\.d\b|wrapped_private/);
+      }
+    }
+    expect(code.find((c) => /keystore\.js$/.test(c.f)).text).toMatch(/indexedDB\.open\(/);
   });
 
   it('the response headers keep the strict policy and send no referrer', () => {
@@ -854,5 +1006,188 @@ describe('publish flows when two actions start from the same head', () => {
     const docId = 'cd'.repeat(16);
     await publishNewVersion({ docId, head, file: file(), identity, password: PASSWORD, iterations: FAST });
     await expect(revokeDocument({ docId, head, reason: 'late', identity })).rejects.toMatchObject({ code: 'conflict' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('the owner file passwords and the last seen messages kept in this browser', () => {
+  const saved = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const DOC = 'a1'.repeat(16);
+  const DOC2 = 'b2'.repeat(16);
+
+  function installStorage(initial = {}) {
+    const data = new Map(Object.entries(initial));
+    const store = {
+      getItem: (k) => (data.has(k) ? data.get(k) : null),
+      setItem: (k, v) => void data.set(k, String(v)),
+      removeItem: (k) => void data.delete(k),
+      data
+    };
+    Object.defineProperty(globalThis, 'localStorage', { value: store, configurable: true, writable: true });
+    return store;
+  }
+
+  afterEach(() => {
+    if (saved) Object.defineProperty(globalThis, 'localStorage', saved);
+    else delete globalThis.localStorage;
+  });
+
+  function vaultWith(mode, extra = {}, api = {}) {
+    const calls = [];
+    const fakeApi = {
+      putSecret: async (docId, password) => {
+        calls.push(['put', docId, password]);
+        if (api.down) throw new Error('offline');
+      },
+      getSecret: async (docId) => {
+        calls.push(['get', docId]);
+        if (api.down) throw new Error('offline');
+        return { password: api.answer || '' };
+      }
+    };
+    const ctx = { mode, strict: false, accountId: 'f'.repeat(32), ...extra };
+    return { vault: createVault({ api: fakeApi, getContext: () => ctx }), calls };
+  }
+
+  it('an Easy account keeps the file password on the server and leaves nothing in the browser', async () => {
+    const store = installStorage();
+    const { vault, calls } = vaultWith('account');
+    expect(await vault.saveDocPassword(DOC, 'ABCD-EFGH-JKLM-NPQR-STUV')).toBe('account');
+    expect(calls).toEqual([['put', DOC, 'ABCD-EFGH-JKLM-NPQR-STUV']]);
+    expect([...store.data.keys()]).toEqual([]);
+  });
+
+  it('when the account cannot be reached the password is kept on this device and the answer says so', async () => {
+    const store = installStorage();
+    const { vault } = vaultWith('account', {}, { down: true });
+    expect(await vault.saveDocPassword(DOC, 'PW-ONE')).toBe('device');
+    // the password, and a mark that it still has to be sent to the account (so a later sign out cannot lose it)
+    expect(JSON.parse(store.data.get('hrdlock.vault.v1'))).toEqual({ ['a:' + 'f'.repeat(32)]: { [DOC]: 'PW-ONE' }, ['u:' + 'f'.repeat(32)]: { [DOC]: '1' } });
+    expect(await vault.getDocPassword(DOC)).toBe('PW-ONE');
+  });
+
+  it('a Strict account and Quick start never send the password to the server', async () => {
+    for (const [mode, extra, scope] of [['account', { strict: true }, 'a:' + 'f'.repeat(32)], ['guest', {}, 'guest']]) {
+      const store = installStorage();
+      const { vault, calls } = vaultWith(mode, extra);
+      expect(await vault.saveDocPassword(DOC, 'PW-TWO')).toBe('device');
+      expect(await vault.getDocPassword(DOC)).toBe('PW-TWO');
+      expect(calls).toEqual([]);
+      expect(Object.keys(JSON.parse(store.data.get('hrdlock.vault.v1')))).toEqual([scope]);
+    }
+  });
+
+  it('one person on a shared browser cannot read the password of another scope', async () => {
+    installStorage();
+    const guest = vaultWith('guest').vault;
+    const account = vaultWith('account', { strict: true }).vault;
+    const other = vaultWith('account', { strict: true, accountId: '9'.repeat(32) }).vault;
+    await guest.saveDocPassword(DOC, 'GUEST-PW');
+    await account.saveDocPassword(DOC2, 'ACCOUNT-PW');
+    expect(await guest.getDocPassword(DOC2)).toBe(null);
+    expect(await account.getDocPassword(DOC)).toBe(null);
+    expect(await other.getDocPassword(DOC2)).toBe(null);
+    expect(await other.getDocPassword(DOC)).toBe(null);
+  });
+
+  it('only 32 hex digit document ids and non empty strings are stored, so no key like __proto__ can be written', async () => {
+    const store = installStorage();
+    const { vault } = vaultWith('guest');
+    for (const id of ['__proto__', 'constructor', '', 'A1'.repeat(16), 'a1'.repeat(15), 'a1'.repeat(17), 42, null, undefined, {}, ['a']]) {
+      expect(await vault.saveDocPassword(id, 'x'), String(id)).toBe('none');
+    }
+    for (const pw of ['', null, undefined, 5, {}]) expect(await vault.saveDocPassword(DOC, pw)).toBe('none');
+    expect(store.data.has('hrdlock.vault.v1')).toBe(false);
+    expect(localSet('guest', '__proto__', 'x')).toBe(false);
+    expect({}.polluted).toBeUndefined();
+  });
+
+  it('damaged or hostile data already in storage is ignored, not trusted', async () => {
+    for (const bad of ['not json', '[]', '"x"', '123', 'null', '{"guest":"text"}', '{"guest":{"zz":"x","' + DOC + '":5}}']) {
+      installStorage({ 'hrdlock.vault.v1': bad });
+      const { vault } = vaultWith('guest');
+      expect(await vault.getDocPassword(DOC), bad).toBe(null);
+      expect(localList('guest').length, bad).toBe(0);
+      expect(await vault.saveDocPassword(DOC, 'fresh'), bad).toBe('device');
+      expect(await vault.getDocPassword(DOC), bad).toBe('fresh');
+    }
+  });
+
+  it('DEFECT: a damaged scope entry that is an array is replaced, so a save that reports "device" is really kept', async () => {
+    // localSet keeps an array as the entry (typeof [] is 'object') and sets a property on it. JSON.stringify
+    // drops that property, so the write succeeds, saveDocPassword answers 'device' ("saved on this device only")
+    // and the password is gone: vault.js localSet, line "const entry = all[scope] && typeof all[scope] === 'object'".
+    installStorage({ 'hrdlock.vault.v1': '{"guest":[1,2]}' });
+    const { vault } = vaultWith('guest');
+    const where = await vault.saveDocPassword(DOC, 'fresh');
+    expect(where).toBe('device');
+    expect(await vault.getDocPassword(DOC), 'saveDocPassword said "device" but the password was not kept').toBe('fresh');
+  });
+
+  it('storage that is blocked or full never throws and never claims a save', async () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new Error('blocked');
+      }
+    });
+    const { vault } = vaultWith('guest');
+    expect(await vault.saveDocPassword(DOC, 'x')).toBe('none');
+    expect(await vault.getDocPassword(DOC)).toBe(null);
+    expect(localClear('guest')).toBe(false);
+    expect(localList('guest')).toEqual([]);
+    const full = installStorage();
+    full.setItem = () => {
+      throw new Error('quota');
+    };
+    expect(await vaultWith('guest').vault.saveDocPassword(DOC, 'x')).toBe('none');
+  });
+
+  it('clearing a scope removes only that scope, and clearing everything removes the whole entry', () => {
+    const store = installStorage();
+    localSet('guest', DOC, 'one');
+    localSet('a:' + '1'.repeat(32), DOC2, 'two');
+    expect(localClear('guest')).toBe(true);
+    expect(localList('guest')).toEqual([]);
+    expect(localList('a:' + '1'.repeat(32))).toEqual([{ docId: DOC2, password: 'two' }]);
+    expect(localClear()).toBe(true);
+    expect(store.data.has('hrdlock.vault.v1')).toBe(false);
+  });
+
+  it('the local list is capped, the oldest entries go first', () => {
+    installStorage();
+    for (let i = 0; i < 2003; i++) localSet('guest', i.toString(16).padStart(32, '0'), 'pw' + i);
+    const list = localList('guest');
+    expect(list.length).toBe(2000);
+    expect(list.some((x) => x.docId === (0).toString(16).padStart(32, '0'))).toBe(false);
+    expect(list.some((x) => x.docId === (2002).toString(16).padStart(32, '0'))).toBe(true);
+  });
+
+  it('the last seen record keeps only whole numbers, never goes down, and a chat never opened shows no unread', () => {
+    const store = installStorage();
+    expect(markSeen('town-hall', 5)).toBe(5);
+    expect(markSeen('town-hall', 3)).toBe(5);
+    expect(markSeen('town-hall', -1)).toBe(5);
+    expect(markSeen('town-hall', 2.5)).toBe(5);
+    expect(markSeen('town-hall', '9')).toBe(5);
+    expect(markSeen('town-hall', Number.NaN)).toBe(5);
+    expect(getLastSeen('town-hall')).toBe(5);
+    expect(unreadCount({ channelId: 'town-hall', messageCount: 8 })).toBe(3);
+    expect(unreadCount({ channelId: 'never-opened', messageCount: 8 })).toBe(0);
+    expect(unreadCount({ channelId: 'town-hall', messageCount: 2 })).toBe(0);
+    for (const bad of [null, undefined, {}, { channelId: 7 }]) expect(unreadCount(bad)).toBe(0);
+    expect(unreadCount({ channelId: 'town-hall', messageCount: 'many' })).toBe(0);
+    const stored = JSON.parse(store.data.get('hrdlock.lastSeen.v1'));
+    for (const value of Object.values(stored)) expect(Number.isSafeInteger(value)).toBe(true);
+  });
+
+  it('the last seen record is capped at 500 chats, and damaged data in it is ignored', () => {
+    const store = installStorage();
+    for (let i = 0; i < 520; i++) markSeen('chat-' + i, 1);
+    expect(Object.keys(JSON.parse(store.data.get('hrdlock.lastSeen.v1'))).length).toBe(500);
+    for (const bad of ['oops', '[1]', '"x"', 'null', '{"town-hall":"7"}', '{"town-hall":-3}', '{"town-hall":1.5}']) {
+      installStorage({ 'hrdlock.lastSeen.v1': bad });
+      expect(getLastSeen('town-hall'), bad).toBe(0);
+    }
   });
 });

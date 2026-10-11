@@ -176,9 +176,10 @@ describe('error wording', () => {
     expect(r.message).toMatch(/20 per minute/);
   });
 
-  it('points to the keys page when the signer is unknown', () => {
-    expect(describeApiError({ status: 400, code: 'unknown_signer', message: 'x' }).hint).toBe('keys');
-    expect(describeApiError({ status: 400, code: 'bad_signature', message: 'x' }).hint).toBe('keys');
+  it('points to signing in again when the signer is unknown or the signature is rejected', () => {
+    expect(describeApiError({ status: 400, code: 'unknown_signer', message: 'x' }).hint).toBe('signin');
+    expect(describeApiError({ status: 400, code: 'bad_signature', message: 'x' }).hint).toBe('signin');
+    expect(describeApiError({ status: 400, code: 'unknown_signer', message: 'x' }).message).not.toMatch(/Identity page/);
   });
 
   it('covers network, expired, exists and server errors', () => {

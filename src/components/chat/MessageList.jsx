@@ -1,14 +1,19 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Button from '../Button.jsx';
 import EmptyState from '../EmptyState.jsx';
+import Icon from '../Icon.jsx';
 import { MessageItem, PendingItem } from './MessageItem.jsx';
+import { buildTimeline } from './roomLogic.js';
 
 const NEAR_BOTTOM_PX = 48;
 
 // The scrolling list of messages.
 // Scroll rules: when the person is at the bottom the list follows new messages, otherwise the
-// position stays and a "new messages" button appears. Older messages added at the top keep the
-// view where it was.
+// position stays and a round "scroll to bottom" button shows how many new messages arrived. Older
+// messages added at the top keep the view where it was.
+//   onBottomChange(atBottom)   told when the person reaches or leaves the bottom
+//   firstUnread                position of the first message to mark as unread, 0 for none
+//   onMenu(entry)              opens the message menu (the touch way to reply)
 export default function MessageList({
   entries,
   pending = [],
@@ -17,24 +22,33 @@ export default function MessageList({
   ownName = '',
   canReply = false,
   onReply,
+  onMenu,
   onRetry,
   onDiscard,
   hasOlder = false,
   loadingOlder = false,
   olderError = '',
-  onLoadOlder
+  onLoadOlder,
+  onBottomChange,
+  firstUnread = 0,
+  now
 }) {
   const scrollRef = useRef(null);
   const stick = useRef(true);
   const snap = useRef({ first: 0, last: 0, pending: 0, ready: false });
   const beforeOlder = useRef(0);
   const [unseen, setUnseen] = useState(0);
+  const [away, setAway] = useState(false);
+  const bottomCb = useRef(onBottomChange);
+  bottomCb.current = onBottomChange;
 
   const byHash = useMemo(() => {
     const map = new Map();
     for (const e of entries) if (e.hash) map.set(e.hash, e);
     return map;
   }, [entries]);
+
+  const rows = useMemo(() => buildTimeline(entries, { firstUnread, now: now || Date.now() }), [entries, firstUnread, now]);
 
   const nameOf = useCallback(
     (keyId) => {
@@ -44,17 +58,24 @@ export default function MessageList({
     [identities]
   );
 
+  // Tell the room whether the newest message is on screen (it marks messages as seen then).
+  useEffect(() => {
+    if (bottomCb.current) bottomCb.current(!away);
+  }, [away]);
+
   const toBottom = useCallback(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
     stick.current = true;
     setUnseen(0);
+    setAway(false);
   }, []);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    setAway((was) => (was === !stick.current ? was : !stick.current));
     if (stick.current) setUnseen((n) => (n === 0 ? n : 0));
   }, []);
 
@@ -78,17 +99,18 @@ export default function MessageList({
         el.scrollTop = el.scrollHeight;
         stick.current = true;
         setUnseen(0);
+        setAway(false);
       } else if (last > prev.last) {
         if (stick.current) {
           el.scrollTop = el.scrollHeight;
         } else {
-          const added = entries.filter((e) => e.seq > prev.last).length;
+          const added = entries.filter((e) => e.seq > prev.last && !(ownKeyId && e.record && e.record.signer === ownKeyId)).length;
           setUnseen((n) => n + added);
         }
       }
     }
     snap.current = { first, last, pending: pending.length, ready: entries.length > 0 || pending.length > 0 || prev.ready };
-  }, [entries, pending.length]);
+  }, [entries, pending.length, ownKeyId]);
 
   const jump = useCallback((seq) => {
     const el = document.getElementById(`chat-msg-${seq}`);
@@ -104,24 +126,16 @@ export default function MessageList({
   }, [onLoadOlder]);
 
   const empty = entries.length === 0 && pending.length === 0;
+  const newLabel = unseen > 0 ? `Scroll to the newest message, ${unseen} new` : 'Scroll to the newest message';
 
   return (
     <div className="chat-list">
-      <div
-        className="chat-scroll"
-        ref={scrollRef}
-        onScroll={onScroll}
-        role="log"
-        aria-label="Messages"
-        aria-relevant="additions"
-        tabIndex={0}
-      >
+      <div className="chat-scroll" ref={scrollRef} onScroll={onScroll} role="log" aria-label="Messages" aria-live={loadingOlder ? 'off' : 'polite'} aria-relevant="additions" tabIndex={0}>
         {hasOlder ? (
           <div className="chat-older">
             <Button size="sm" onClick={loadOlder} loading={loadingOlder}>
               Load older messages
             </Button>
-            <p className="ui-muted">Only the latest messages are shown. Older ones are not loaded.</p>
             {olderError ? (
               <p className="chat-error" role="alert">
                 {olderError}
@@ -130,35 +144,74 @@ export default function MessageList({
           </div>
         ) : null}
         {empty ? (
-          <EmptyState title="No messages yet">Be the first to write in this channel.</EmptyState>
+          <EmptyState art="chats" title="No messages yet" className="chat-empty">
+            Say hello. Everyone can read this chat, and your message is signed with your key.
+          </EmptyState>
         ) : (
           <ol className="chat-msgs">
-            {entries.map((entry) => {
+            {rows.map((row) => {
+              if (row.kind === 'day') {
+                return (
+                  <li key={row.key} className="chat-day">
+                    <span className="chat-day__label">{row.label}</span>
+                  </li>
+                );
+              }
+              if (row.kind === 'unread') {
+                return (
+                  <li key={row.key} className="chat-day chat-day--unread">
+                    <span className="chat-day__label">{row.label}</span>
+                  </li>
+                );
+              }
+              const entry = row.entry;
               const rec = entry.record || {};
               const parent = rec.replyTo ? byHash.get(rec.replyTo) : undefined;
               return (
                 <MessageItem
-                  key={entry.seq}
+                  key={row.key}
                   entry={entry}
                   name={nameOf(rec.signer)}
                   parent={parent}
                   parentName={parent && parent.record ? nameOf(parent.record.signer) : ''}
                   own={Boolean(ownKeyId) && rec.signer === ownKeyId}
+                  grouped={row.grouped}
+                  endOfGroup={row.endOfGroup}
                   canReply={canReply}
                   onReply={onReply}
+                  onMenu={onMenu}
                   onJump={jump}
                 />
               );
             })}
-            {pending.map((item) => (
-              <PendingItem key={item.id} item={item} name={ownName} keyId={ownKeyId} onRetry={onRetry} onDiscard={onDiscard} />
-            ))}
+            {pending
+              .filter((item) => item.status !== 'failed')
+              .map((item) => (
+                <PendingItem key={item.id} item={item} name={ownName} keyId={ownKeyId} onRetry={onRetry} onDiscard={onDiscard} />
+              ))}
+            {/* Messages that could not be sent are kept together under their own label, not mixed in with newer
+                messages that did go out, so none of them looks like it was sent in order. */}
+            {pending.some((item) => item.status === 'failed') ? (
+              <li className="chat-day chat-day--unsent">
+                <span className="chat-day__label">Not sent. Try again or discard.</span>
+              </li>
+            ) : null}
+            {pending
+              .filter((item) => item.status === 'failed')
+              .map((item) => (
+                <PendingItem key={item.id} item={item} name={ownName} keyId={ownKeyId} onRetry={onRetry} onDiscard={onDiscard} />
+              ))}
           </ol>
         )}
       </div>
-      {unseen > 0 ? (
-        <button type="button" className="chat-newbtn" onClick={toBottom}>
-          {unseen === 1 ? '1 new message' : `${unseen} new messages`}
+      {away ? (
+        <button type="button" className="chat-newbtn" onClick={toBottom} aria-label={newLabel}>
+          <Icon name="arrow-down" size={20} />
+          {unseen > 0 ? (
+            <span className="chat-newbtn__count" aria-hidden="true">
+              {unseen > 99 ? '99+' : unseen}
+            </span>
+          ) : null}
         </button>
       ) : null}
     </div>

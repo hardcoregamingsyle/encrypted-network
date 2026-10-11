@@ -10,11 +10,20 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   scroll-padding-top: calc(var(--nav-height) + var(--space-2));
+  /* the fixed tab bar and the + button must not cover a control that has keyboard focus */
+  scroll-padding-bottom: calc(var(--tabs-height) + var(--space-8));
+}
+
+@media (min-width: 56.25rem) {
+  html {
+    scroll-padding-bottom: var(--space-8);
+  }
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
@@ -25,6 +34,7 @@ body {
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 h1,
@@ -159,7 +169,8 @@ button {
   color: inherit;
 }
 
-input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']),
+/* :where() keeps the specificity at zero, so a component class can restyle a text input without a fight */
+input:where(:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range'])),
 select,
 textarea {
   display: block;
@@ -291,6 +302,12 @@ input[type='file'].ui-sr-only {
 
   .ui-header,
   .ui-footer,
+  .ui-sidenav,
+  .ui-tabbar,
+  .ui-fab,
+  .ui-screen-header,
+  .ui-banner,
+  .ui-sheet-root,
   .ui-skip,
   .ui-toasts,
   .ui-btn,

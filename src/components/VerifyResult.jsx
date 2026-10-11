@@ -20,7 +20,16 @@ function checkName(id) {
   return CHECK_NAMES[id] || String(id).replace(/_/g, ' ');
 }
 
-function headline(result) {
+// Which key the server proof was checked against, in words that match what this browser really did. The
+// proof is only "pinned" when the person chose the key on purpose.
+function keySource(trust) {
+  if (trust === 'pinned-match') return { who: 'the server whose key you pinned', check: 'the server key you pinned' };
+  if (trust === 'remembered-match') return { who: "the server whose key this browser remembered from an earlier visit", check: 'the server key this browser remembered from an earlier visit' };
+  if (trust === 'first-visit' || trust === 'first-visit-unsaved') return { who: 'the server', check: "the server key seen on this first visit (nothing earlier to compare it with)" };
+  return { who: 'the server', check: 'the server key it was checked against' };
+}
+
+function headline(result, trust) {
   if (!result.ok) {
     return {
       tone: 'bad',
@@ -50,20 +59,34 @@ function headline(result) {
       text: 'Every version is signed by one key and the versions link in order. Because no server key is pinned, this only shows that the answer agrees with itself. Anyone can make their own keys and documents that pass these checks. Pin the server key id from an official source on the Verify page to tie the answer to a server you trust.'
     };
   }
+  const src = keySource(trust);
+  const firstOnly = trust === 'first-visit' || trust === 'first-visit-unsaved';
   return {
     tone: 'good',
     title: 'Signatures, version chain and server checkpoint all check out',
-    text: 'Every version is signed by the owner key, the versions link in order, and the server whose key you pinned confirmed this latest version when it answered.'
+    text:
+      `Every version is signed by the owner key, the versions link in order, and ${src.who} confirmed this latest version when it answered.` +
+      (firstOnly ? " This browser had not seen the server's key before, so this does not show that the server is the one you expect." : '')
   };
 }
 
+// The checkpoint detail from the verifier always says "pinned server key". When the key was only remembered
+// (or seen for the first time) that would claim more than was done, so the sentence names the real source.
+function detailText(check, src) {
+  if (check && check.id === 'checkpoint' && check.ok === true && typeof check.detail === 'string' && /pinned server key/i.test(check.detail)) {
+    return check.detail.replace(/the pinned server key/i, src.check);
+  }
+  return check.detail;
+}
+
 // Shows the result of verifyDocumentBundle: an overall banner, each check and the warnings.
-export default function VerifyResult({ result }) {
+export default function VerifyResult({ result, trust }) {
   if (!result || typeof result !== 'object') return null;
   const checks = Array.isArray(result.checks) ? result.checks : [];
   const warnings = Array.isArray(result.warnings) ? result.warnings : [];
   const head = result.head;
-  const top = headline(result);
+  const top = headline(result, trust);
+  const src = keySource(trust);
 
   return (
     <section className="ui-verify" aria-label="Verification result">
@@ -113,7 +136,7 @@ export default function VerifyResult({ result }) {
                   {checkName(check.id)}
                   <span className="ui-sr-only">{check.ok ? ': passed' : ': failed'}</span>
                 </p>
-                {check.detail ? <p className="ui-checks__detail">{check.detail}</p> : null}
+                {check.detail ? <p className="ui-checks__detail">{detailText(check, src)}</p> : null}
               </div>
             </li>
           ))}

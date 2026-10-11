@@ -37,6 +37,35 @@
   --color-info-bg: #eaf0fd;
   --color-info-border: #aebff0;
 
+  /* colour: chat app feel. Avatars are picked from a hash of the name or key, white initials on each. */
+  --color-avatar-1: #4f46e5;
+  --color-avatar-2: #0e7490;
+  --color-avatar-3: #15803d;
+  --color-avatar-4: #b45309;
+  --color-avatar-5: #be185d;
+  --color-avatar-6: #6d28d9;
+  --color-avatar-7: #1d4ed8;
+  --color-avatar-8: #b91c1c;
+  --color-on-avatar: #ffffff;
+
+  /* colour: message bubbles and the chat wallpaper */
+  --color-chat-bg: #eaecf6;
+  --color-bubble-own: #4338ca;
+  --color-bubble-own-text: #ffffff;
+  --color-bubble-own-meta: #e2e2ff;
+  --color-bubble-other: #ffffff;
+  --color-bubble-other-text: #181c2a;
+
+  /* colour: tabs, side navigation, sheets, unread badge, loading skeletons */
+  --color-tab-bg: #ffffff;
+  --color-tab-idle: #454d63;
+  --color-tab-active: #4338ca;
+  --color-scrim: rgba(12, 14, 28, 0.5);
+  --color-badge-bg: #4338ca;
+  --color-badge-text: #ffffff;
+  --color-skeleton: #e3e6f1;
+  --color-skeleton-shine: #f1f3fa;
+
   /* space: 8px scale (4px for the smallest step) */
   --space-0: 0.25rem;
   --space-1: 0.5rem;
@@ -74,11 +103,19 @@
   --reading-width: 44rem;
   --nav-height: 3.5rem;
   --tap-size: 2.75rem;
+  --tabs-height: 4rem;
+  --sidenav-width: 16rem;
+  --bubble-max: 34rem;
+  --sheet-width: 32rem;
 
   /* stacking */
   --z-nav: 20;
-  --z-toast: 40;
-  --z-skip: 50;
+  --z-tabs: 25;
+  --z-fab: 28;
+  --z-scrim: 60;
+  --z-sheet: 61;
+  --z-toast: 70;
+  --z-skip: 80;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -110,6 +147,20 @@
     --color-info: #9db6ff;
     --color-info-bg: #14203d;
     --color-info-border: #34508f;
+
+    --color-chat-bg: #0b0e14;
+    --color-bubble-own: #4b44d6;
+    --color-bubble-own-meta: #dcdcff;
+    --color-bubble-other: #1f2535;
+    --color-bubble-other-text: #e9ecf4;
+
+    --color-tab-bg: #171b25;
+    --color-tab-idle: #a2abc0;
+    --color-tab-active: #aab0ff;
+    --color-scrim: rgba(0, 0, 0, 0.62);
+    --color-badge-bg: #5a52f0;
+    --color-skeleton: #232a3b;
+    --color-skeleton-shine: #2c3448;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);

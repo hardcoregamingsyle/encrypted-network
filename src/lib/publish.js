@@ -216,7 +216,7 @@ export async function publishNewDocument({ file, label, listed, identity, passwo
       onStep,
       pending: attempt,
       // The id is kept in this browser before the record is sent, so a document whose answer was lost is still listed.
-      onSigned: (record) => rememberDoc({ docId, label: text, createdAt: record.createdAt }),
+      onSigned: (record) => rememberDoc({ docId, label: text, createdAt: record.createdAt, owner: identity.keyId }),
       makeRecord: (createdAt) => ({
         v: 2,
         type: 'doc.create',
