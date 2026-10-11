@@ -19,6 +19,7 @@ import * as meSessionsRoute from '../../functions/api/me/sessions/index.js';
 import * as meSessionRoute from '../../functions/api/me/sessions/[id].js';
 import * as meFilesRoute from '../../functions/api/me/files/index.js';
 import * as meFileRoute from '../../functions/api/me/files/[id].js';
+import * as meFilesCheckRoute from '../../functions/api/me/files-check.js';
 import * as identitiesRoute from '../../functions/api/identities/index.js';
 import * as healthRoute from '../../functions/api/health.js';
 import * as channelsRoute from '../../functions/api/channels/index.js';
@@ -215,6 +216,7 @@ const ROUTES = [
   [/^\/api\/me\/secrets\/([^/]+)$/, meSecretsRoute, ['docId']],
   [/^\/api\/me\/sessions$/, meSessionsRoute, []],
   [/^\/api\/me\/sessions\/([^/]+)$/, meSessionRoute, ['id']],
+  [/^\/api\/me\/files-check$/, meFilesCheckRoute, []],
   [/^\/api\/me\/files$/, meFilesRoute, []],
   [/^\/api\/me\/files\/([^/]+)$/, meFileRoute, ['id']],
   [/^\/api\/identities$/, identitiesRoute, []],
