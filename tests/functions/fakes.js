@@ -24,6 +24,9 @@ import * as identitiesRoute from '../../functions/api/identities/index.js';
 import * as healthRoute from '../../functions/api/health.js';
 import * as channelsRoute from '../../functions/api/channels/index.js';
 import * as messagesRoute from '../../functions/api/channels/[channelId]/messages.js';
+import * as channelKeyRoute from '../../functions/api/channels/[channelId]/key.js';
+import * as channelMembersRoute from '../../functions/api/channels/[channelId]/members.js';
+import * as docViewRoute from '../../functions/api/documents/[docId]/view.js';
 import * as docListRoute from '../../functions/api/documents/index.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations');
@@ -223,6 +226,9 @@ const ROUTES = [
   [/^\/api\/health$/, healthRoute, []],
   [/^\/api\/channels$/, channelsRoute, []],
   [/^\/api\/channels\/([^/]+)\/messages$/, messagesRoute, ['channelId']],
+  [/^\/api\/channels\/([^/]+)\/key$/, channelKeyRoute, ['channelId']],
+  [/^\/api\/channels\/([^/]+)\/members$/, channelMembersRoute, ['channelId']],
+  [/^\/api\/documents\/([^/]+)\/view$/, docViewRoute, ['docId']],
   [/^\/api\/documents$/, docListRoute, []]
 ];
 
