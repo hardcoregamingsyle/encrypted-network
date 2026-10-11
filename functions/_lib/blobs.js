@@ -82,7 +82,7 @@ async function reserve(db, { hash, size, signer, now, pending }) {
       'INSERT INTO blobs (hash, size, uploader, created_at, pending) ' +
         'SELECT ?, ?, ?, ?, ? WHERE ' +
         '(SELECT COALESCE(SUM(size), 0) FROM blobs WHERE uploader = ?) + ? <= ? AND ' +
-        "(SELECT bytes FROM blob_totals WHERE k = 'all') + ? <= ? AND " +
+        "(SELECT bytes FROM blob_totals WHERE k = 'all') + (SELECT COALESCE(SUM(size), 0) FROM private_files) + ? <= ? AND " +
         '(SELECT COUNT(*) FROM blobs WHERE uploader = ? AND pending = 1) < ?'
     )
     .bind(
@@ -101,7 +101,7 @@ async function refuseReason(db, { size, signer }) {
   if ((used ? used.n : 0) + size > LIMITS.SIGNER_BLOB_QUOTA_BYTES) {
     return new ApiError('too_large', 'the upload quota for this identity is used up');
   }
-  const total = await db.prepare("SELECT bytes FROM blob_totals WHERE k = 'all'").first();
+  const total = await db.prepare("SELECT (SELECT bytes FROM blob_totals WHERE k = 'all') + (SELECT COALESCE(SUM(size), 0) FROM private_files) AS bytes").first();
   if ((total ? total.bytes : 0) + size > GLOBAL_BLOB_CAP_BYTES) {
     return new ApiError('too_large', 'the file store is full, try again later');
   }
