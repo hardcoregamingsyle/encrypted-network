@@ -858,7 +858,7 @@ describe('source scan: injection and leakage patterns', () => {
       const name = c.f.replace(ROOT, '');
       for (const m of c.text.matchAll(/\bnavigate\(((?:[^()]|\([^()]*\))*)\)/g)) {
         const arg = m[1].split(',')[0].trim();
-        const ok = /^'\/[^']*'$/.test(arg) || /^`\/chats\/\$\{encodeURIComponent\([^)]*\)\}`$/.test(arg) || arg === 'next' || arg === '-1' || arg === 'backTo' || /^'\/signin\?next=' \+ encodeURIComponent\(next\)$/.test(arg);
+        const ok = /^'\/[^']*'$/.test(arg) || /^`\/(?:chats|d)\/\$\{encodeURIComponent\([^)]*\)\}`$/.test(arg) || arg === 'next' || arg === '-1' || arg === 'backTo' || /^'\/signin\?next=' \+ encodeURIComponent\(next\)$/.test(arg);
         if (!ok) bad.push(name + ' navigate(' + arg + ')');
       }
       for (const m of c.text.matchAll(/<Navigate to=(\{[^}]*\}|"[^"]*")/g)) {
