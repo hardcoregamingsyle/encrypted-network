@@ -242,8 +242,19 @@ export function listChannels({ limit, before, beforeId, signal } = {}) {
   return requestJson('/api/channels' + queryString({ limit, before, beforeId }), { signal });
 }
 
-export function createChannel(record, signature) {
-  return requestJson('/api/channels', { method: 'POST', body: { record, signature } });
+// members (optional): email addresses. With members the chat is private: only they and you can read and write.
+export function createChannel(record, signature, members) {
+  return requestJson('/api/channels', { method: 'POST', body: members ? { record, signature, members } : { record, signature } });
+}
+
+// Private chats. The group password is made on the server and only handed to members -> { key: base64url of 32 bytes }
+export function getChannelKey(channelId, opts) {
+  return requestJson(`/api/channels/${enc(channelId)}/key`, opts);
+}
+
+// -> { ok, added }
+export function addChannelMembers(channelId, members) {
+  return requestJson(`/api/channels/${enc(channelId)}/members`, { method: 'POST', body: { members } });
 }
 
 export function getMessages(channelId, { after, limit, tail, signal } = {}) {
@@ -302,6 +313,15 @@ export function getMyKey(opts) {
 // Same row shape as listDocuments, but every document owned by any key of the account.
 export function listMyDocuments({ limit, before, beforeId, signal } = {}) {
   return requestJson('/api/me/documents' + queryString({ limit, before, beforeId }), { signal });
+}
+
+// Public files: -> { viewable: false } or { viewable: true, password } (anyone may ask). The owner turns it on and off.
+export function getViewable(docId, opts) {
+  return requestJson(`/api/documents/${enc(docId)}/view`, opts);
+}
+
+export function putViewable(docId, on) {
+  return requestJson(`/api/documents/${enc(docId)}/view`, { method: 'PUT', body: { on } });
 }
 
 export function putSecret(docId, password) {
