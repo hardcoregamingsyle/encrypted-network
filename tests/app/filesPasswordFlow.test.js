@@ -82,6 +82,14 @@ describe('FilesPasswordSheet (what the person sees)', () => {
     expect(html).not.toContain('type="password"');
   });
 
+  it('making a file public asks for the password in one box and says what becomes public', () => {
+    const html = render({ purpose: 'public' });
+    expect(html.match(/type="password"/g)).toHaveLength(1);
+    expect(text(html)).toContain('to make this file public');
+    expect(text(html)).toContain('Anyone will see its name');
+    expect(text(html)).not.toContain('Checking your account');
+  });
+
   it('opening a file needs no fingerprint: one box at once, nothing is read first', () => {
     const html = render({ purpose: 'open' });
     expect(html.match(/type="password"/g)).toHaveLength(1);
