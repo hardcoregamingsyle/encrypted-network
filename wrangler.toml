@@ -18,3 +18,14 @@ migrations_dir = "migrations"
 [[kv_namespaces]]
 binding = "BLOBS"
 id = "49e04c5edfb7481ea532e6ca26f5c0a3"
+
+# Plain (not secret) settings for sign in by email go here, in a [vars] section. Keys are secrets and are
+# set with: wrangler pages secret put <NAME> --project-name <project>. See scripts/DEPLOY.md section 8.
+# In a Pages project that has this file the dashboard does not edit plain variables, so they live here.
+[vars]
+MAIL_PROVIDER = "resend"                         # resend, brevo or cloudflare
+MAIL_FROM = "hrdlock <login@mail.skinticals.com>"  # must be on a domain verified with the mail provider
+MAIL_CAP_HOUR = "40"                             # most sign in mails per hour for the whole service
+MAIL_CAP_DAY = "90"                              # the Resend free plan allows 100 mails a day
+# This file has one set of bindings (database and file store) and no [env.preview] section: check in the
+# dashboard (Settings, Bindings, Preview column) whether previews share them with production.
