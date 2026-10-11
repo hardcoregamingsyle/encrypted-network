@@ -42,6 +42,7 @@ export async function onRequestDelete({ request, env }) {
     throw new ApiError('conflict', 'your private files are still being removed, delete again to finish');
   }
   await env.DB.batch([
+    env.DB.prepare("UPDATE documents SET viewable = 0 WHERE owner_key_id IN (SELECT key_id FROM account_keys WHERE account_id = ?)").bind(id),
     env.DB.prepare('DELETE FROM private_files WHERE account_id = ?').bind(id),
     env.DB.prepare('DELETE FROM channel_members WHERE account_id = ?').bind(id),
     env.DB.prepare('DELETE FROM sessions WHERE account_id = ?').bind(id),
