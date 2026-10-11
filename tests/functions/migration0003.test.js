@@ -6,9 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { appendMessage, channelFromRow, CHANNEL_SELECT, previewText } from '../../functions/_lib/channels.js';
 import { ZERO_HASH } from '../../shared/encoding.js';
 import { recordHash } from '../../shared/records.js';
-import { accountEnv, callApi, fakeD1, newDatabase } from './fakes.js';
+import { accountEnv, callApi, fakeD1, migrationFiles, newDatabase } from './fakes.js';
 
 const SQL = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations', '0003_accounts.sql'), 'utf8');
+const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations');
+// 0003 and then every later migration: the current code needs the later columns too.
+const migrateToLatest = (db) => {
+  db.exec(SQL);
+  for (const f of migrationFiles().filter((n) => n > '0003_accounts.sql')) db.exec(readFileSync(join(MIGRATIONS, f), 'utf8'));
+};
 const count = (db, table) => db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
 const H = (c) => c.repeat(64);
 
@@ -55,7 +61,7 @@ describe('migration 0003 on a database with data', () => {
 
   it('old channels keep their counters and get empty previews', () => {
     const db = oldDatabase();
-    db.exec(SQL);
+    migrateToLatest(db);
     const rows = db.prepare('SELECT channel_id, message_count, last_message_at, last_text, last_signer_name, received_at FROM channels ORDER BY channel_id').all();
     expect(rows.map((r) => ({ ...r }))).toEqual([
       { channel_id: 'empty-room', message_count: 0, last_message_at: null, last_text: '', last_signer_name: '', received_at: 23 },
@@ -136,7 +142,7 @@ describe('migration 0003 on a database with data', () => {
   it('the old channel list route answers with the new fields after the migration', async () => {
     const { env, db } = accountEnv({ upTo: '0002_hardening.sql' });
     db.prepare('INSERT INTO channels (channel_id, title, doc_id, created_by, created_at, received_at, record, signature) VALUES (?, ?, ?, ?, 20, 21, ?, ?)').run('old-room', 'Old room', '', H('a'), '{}', 'sig');
-    db.exec(SQL);
+    migrateToLatest(db);
     const res = await callApi(env, 'GET', '/api/channels');
     expect(res.status).toBe(200);
     expect(res.json.channels[0]).toMatchObject({ channelId: 'old-room', lastText: '', lastSignerName: '' });
