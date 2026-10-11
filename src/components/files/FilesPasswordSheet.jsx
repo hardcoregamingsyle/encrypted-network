@@ -8,13 +8,17 @@ import { ApiError, getFilesCheck, putFilesCheck } from '../../lib/api.js';
 import { SET_ELSEWHERE, submitFilesPassword } from './filesPasswordFlow.js';
 
 const FIRST_INFO = 'This password locks your private files. Only you know it. We cannot recover it: if you forget it, your private files are lost.';
-const ASK_INFO = { add: 'Enter your files password to lock this file.', open: 'Enter your files password to open this file.' };
+const ASK_INFO = {
+  add: 'Enter your files password to lock this file.',
+  open: 'Enter your files password to open this file.',
+  public: 'Enter your files password to make this file public. Anyone will see its name and be able to check it. It stays locked unless you turn on "Anyone can open this file" afterwards.'
+};
 
-// Asks for the files password. purpose is 'add' (lock a new file) or 'open'. check is optional: give the fingerprint
+// Asks for the files password. purpose is 'add' (lock a new file), 'open' or 'public' (open it to publish it). check is optional: give the fingerprint
 // (or null) when the caller has it already, otherwise it is read here. onDone gets the password for the locking code.
 // When onDone throws, the sentence is shown and the box stays open for another try.
 export default function FilesPasswordSheet({ purpose, accountId, check: given, onDone, onClose }) {
-  const [check, setCheck] = useState(purpose === 'open' ? '' : given); // undefined while it is being read. Opening needs none: the file says if the password is wrong
+  const [check, setCheck] = useState(purpose === 'add' ? given : ''); // undefined while it is being read. Opening needs none: the file says if the password is wrong
   const box = useRef(null);
   const [password, setPassword] = useState('');
   const [again, setAgain] = useState('');
