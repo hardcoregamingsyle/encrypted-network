@@ -72,6 +72,14 @@
   gap: var(--space-1);
 }
 
+/* private rows have two buttons: on a phone they stack, so the file name keeps some width */
+@media (max-width: 30rem) {
+  .files-private .ui-item__trail {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* the list is reloading: the text stays at full strength, only the icons are dimmed */
 .files-stale {
   cursor: progress;
