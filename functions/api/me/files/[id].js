@@ -23,19 +23,18 @@ export async function onRequestGet({ request, env, params }) {
   if (!row) throw notFound('file not found');
   const object = await blobStore(env).get('private/' + id);
   if (!object) throw notFound('file not found');
-  return new Response(object.body, {
-    status: 200,
-    headers: {
-      'Content-Type': 'application/octet-stream',
-      'Content-Length': String(object.size),
-      'Cache-Control': 'no-store',
-      'x-blob-sha256': row.blob_hash,
-      'x-hrd-key': row.signer,
-      'x-hrd-time': String(row.signed_at),
-      'x-hrd-sig': row.signature,
-      'x-file-label': encodeURIComponent(row.label)
-    }
-  });
+  const headers = {
+    'Content-Type': 'application/octet-stream',
+    'Content-Length': String(object.size),
+    'Cache-Control': 'no-store',
+    'x-blob-sha256': row.blob_hash,
+    'x-hrd-key': row.signer,
+    'x-hrd-time': String(row.signed_at),
+    'x-hrd-sig': row.signature,
+    'x-file-label': encodeURIComponent(row.label)
+  };
+  if (auth.setCookie) headers['Set-Cookie'] = auth.setCookie; // the session was just extended
+  return new Response(object.body, { status: 200, headers });
 }
 
 export async function onRequestDelete({ request, env, params }) {
