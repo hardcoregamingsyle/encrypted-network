@@ -2,12 +2,12 @@
 // The file is locked here, the server only ever sees the locked bytes. Records are signed here
 // with the identity key. Opening a document re-checks everything locally (signatures, chain,
 // file hash, fingerprint) and never trusts the server's word.
-import { isHex } from '../../shared/encoding.js';
-import { sha256Hex } from '../../shared/hash.js';
+import { hexToBytes, isHex } from '../../shared/encoding.js';
+import { PUBLIC_COMMIT_SALT, sha256Hex } from '../../shared/hash.js';
 import { compareWithSeen, nextSeenHead } from '../../shared/headMemory.js';
 import { newDocId, recordHash as hashRecord, validateRecord, ZERO_HASH } from '../../shared/records.js';
 import { verifyBlobBytes, verifyDocumentBundle, verifyPlaintext } from '../../shared/verify.js';
-import { getBlob, getDocument, postDocRecord, putBlob } from './api.js';
+import { getBlob, getDocument, getViewable, postDocRecord, putBlob } from './api.js';
 import { lockInWorker, unlockInWorker } from './cipherClient.js';
 import { getSeenHead, setSeenHead } from './headStore.js';
 import { fullLink, verifyLink } from './links.js';
@@ -54,6 +54,16 @@ function defaultLabel(name) {
 function checkRecord(record) {
   const v = validateRecord(record);
   if (!v.ok) throw new Error('record is not valid: ' + v.error);
+}
+
+// The password of a file its owner opened for everyone ("viewable"), or '' when it is not.
+async function viewablePassword(docId) {
+  try {
+    const v = await getViewable(docId);
+    return v && v.viewable === true && typeof v.password === 'string' ? v.password : '';
+  } catch {
+    return '';
+  }
 }
 
 // Reads and validates the chosen file. Returns { name, data }.
@@ -108,7 +118,8 @@ async function lockStage({ read, password, iterations, onStep, cached }) {
     return cached;
   }
   step(onStep, 'derive', 'Deriving the key, this takes a moment');
-  const args = { data: read.data, name: read.name, password };
+  // Published files use the public commit salt, so the plain file can be checked against the record by anyone.
+  const args = { data: read.data, name: read.name, password, commitSalt: hexToBytes(PUBLIC_COMMIT_SALT) };
   if (iterations !== undefined) args.iterations = iterations;
   const locked = await lockInWorker(args);
   step(onStep, 'lock', 'File locked');
@@ -400,6 +411,7 @@ export async function openDocument({
 
   step(onStep, 'blob', 'Checking the file against the signed hash');
   result.blobCheck = await verifyBlobBytes(bytes, head);
+  if (!(typeof password === 'string' && normalizePassword(password) !== '') && result.blobCheck.ok) password = await viewablePassword(docId);
 
   if (typeof password === 'string' && normalizePassword(password) !== '') {
     if (!result.blobCheck.ok) {
