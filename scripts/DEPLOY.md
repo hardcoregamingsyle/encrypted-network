@@ -51,7 +51,7 @@ the plain list of what the service does and does not promise.
 
 - Authors can not delete records, versions or messages. A document can be revoked (a signed record), not erased.
 - The operator can take one stored file down: `npm run takedown -- <blobHash> --reason "text" --remote`.
-  It blocks the hash from being uploaded again, removes the row and deletes the object. It never touches
+  It blocks the hash from being uploaded again, removes the row and deletes the object. KV keeps a copy at each edge location, so the file can still be served for a few minutes (it took about five in a live test) before every location answers 404. It never touches
   the ledger. A document that pointed at the file keeps its record, but its file can no longer be fetched.
 
 ## 5. Limits (all enforced by the server)
