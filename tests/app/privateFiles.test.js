@@ -7,6 +7,7 @@ import { LIMITS } from '../../shared/records.js';
 import { signRecord, verifyRecord } from '../../shared/keys.js';
 import { unlockFile } from '../../src/lib/lockfile.js';
 import { ToastProvider } from '../../src/components/Toast.jsx';
+import ViewableSwitch from '../../src/components/doc/ViewableSwitch.jsx';
 import PrivateFiles from '../../src/components/files/PrivateFiles.jsx';
 import { addPrivateFile, labelFor } from '../../src/components/files/addPrivate.js';
 import { NOT_YOURS } from '../../src/components/files/filesPasswordFlow.js';
@@ -99,6 +100,17 @@ describe('PrivateFiles (what the person sees)', () => {
     expect(text(html)).toContain('Land record.pdf');
     expect(text(html)).toContain('2 KiB');
     expect(text(html)).not.toContain('No private files yet');
+  });
+
+  it('each row also has a Make public button, and the viewable switch waits for its answer before it can be used', () => {
+    const html = render(READY, { files: [{ id: 'a'.repeat(32), label: 'Land record.pdf', size: 2048, createdAt: 1790000000000 }] });
+    expect(html).toContain('aria-label="Make Land record.pdf public"');
+    expect(text(html)).toContain('Make public');
+    const sw = renderToString(h(ViewableSwitch, { docId: 'c'.repeat(32), password: 'ABCD' }));
+    expect(text(sw)).toContain('Anyone can open this file');
+    expect(text(sw)).toContain('Off: anyone can still check a file against this one');
+    expect(sw).toMatch(/<input[^>]*disabled/);
+    expect(sw).toMatch(/type="checkbox"/);
   });
 
   it('each row has a Download and a Delete button named after the file', () => {
