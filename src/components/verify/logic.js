@@ -1,7 +1,7 @@
 // Pure helpers for the Verify page: reading links, fingerprints, saved bundles, and comparing a
 // local file with a document. No DOM and no network here, so all of it is tested in Node.
 import { isHex } from '../../../shared/encoding.js';
-import { sha256Hex } from '../../../shared/hash.js';
+import { PUBLIC_COMMIT_SALT, computeCommitment, sha256Hex } from '../../../shared/hash.js';
 import { parseFragment } from '../../lib/links.js';
 
 export const MAX_BUNDLE_BYTES = 10 * 1024 * 1024;
@@ -166,6 +166,22 @@ export function compareWithHead(localHash, open) {
     return { ...base, state: 'not_unlocked', detail: 'The stored file could not be unlocked and checked: ' + open.plaintextCheck.detail };
   }
   return { ...base, state: open.fingerprint === localHash ? 'same' : 'different', detail: '' };
+}
+
+// The same comparison without a password, the way anyone can do it. A locked copy (.hrdlock) has the signed hash of
+// the latest version. A plain file gives the signed commitment when it was published with the public commit salt.
+// A file that matches neither is 'no_match': it may still be the same file, because older documents used a secret
+// salt and need their password.
+export async function compareWithPublicHead(localHash, open) {
+  const base = compareWithHead(localHash, open);
+  const rows = open && open.bundle && Array.isArray(open.bundle.records) ? open.bundle.records : [];
+  const head = rows.length > 0 && rows[rows.length - 1].record ? rows[rows.length - 1].record : null;
+  if (base.state !== 'not_unlocked' || !head || !head.blob || !isHex(localHash, 64)) return base;
+  if (localHash === head.blob.hash) return { ...base, state: 'same', detail: 'Your file is the locked copy (.hrdlock) of this version.' };
+  if (head.commitment === (await computeCommitment({ fileHash: localHash, commitSalt: PUBLIC_COMMIT_SALT }))) {
+    return { ...base, state: 'same', detail: 'Your file is the plain file of this version.' };
+  }
+  return { ...base, state: 'no_match', detail: 'It is not the locked copy of this version and it does not match its public fingerprint. A file published long ago can only be compared with its password: enter it and compare again.' };
 }
 
 // Tries the older versions of a document, newest first, to see whether the local file equals one
