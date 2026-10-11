@@ -6,3 +6,5 @@ dist/
 cloud/
 *.log
 hacktime.py
+hacktime_state.json
+server-key*.json
