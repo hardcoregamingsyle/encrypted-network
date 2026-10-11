@@ -8,6 +8,7 @@ import ScreenHeader from '../components/ScreenHeader.jsx';
 import Skeleton from '../components/Skeleton.jsx';
 import AddFileSheet from '../components/files/AddFileSheet.jsx';
 import FileList from '../components/files/FileList.jsx';
+import PrivateFiles from '../components/files/PrivateFiles.jsx';
 import { TABS, emptyCopy, listSummary, publicRow, tabFromSearch, usableRows } from '../components/files/filesLogic.js';
 import useFileList, { useDebounced } from '../components/files/useFileList.js';
 import useMineFiles from '../components/files/useMineFiles.js';
@@ -111,7 +112,7 @@ export default function FilesPage() {
   const ready = session.status === 'ready' && Boolean(session.identity);
 
   function changeTab(next) {
-    setParams(next === 'public' ? { tab: 'public' } : {}, { replace: true });
+    setParams(next === 'mine' ? {} : { tab: next }, { replace: true });
   }
 
   function openAdd() {
@@ -121,12 +122,12 @@ export default function FilesPage() {
 
   return (
     <div className="ui-screen files-page">
-      <ScreenHeader title="Files" subtitle={tab === 'public' ? 'Files anyone can find' : 'Files you published'} />
+      <ScreenHeader title="Files" subtitle={{ public: 'Files anyone can find', private: 'Files only you can open' }[tab] || 'Files you published'} />
       <div className="ui-container ui-container--narrow files-body">
         <TabSwitch tab={tab} onChange={changeTab} />
-        {tab === 'public' ? <PublicTab reloadKey={reloadKey} now={now} /> : <MineTab session={session} reloadKey={reloadKey} onAdd={openAdd} now={now} />}
+        {tab === 'public' ? <PublicTab reloadKey={reloadKey} now={now} /> : tab === 'private' ? <PrivateFiles session={session} /> : <MineTab session={session} reloadKey={reloadKey} onAdd={openAdd} now={now} />}
       </div>
-      <Fab label="Add file" onClick={openAdd} />
+      {tab !== 'private' ? <Fab label="Add file" onClick={openAdd} /> : null}
       <AddFileSheet
         open={adding}
         onClose={() => setAdding(false)}
