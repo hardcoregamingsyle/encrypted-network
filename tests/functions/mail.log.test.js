@@ -55,3 +55,30 @@ describe('mail failure logging', () => {
     expect(read()).toContain('HTTP 422');
   });
 });
+
+describe('redirects from the provider', () => {
+  it('asks fetch only for values Cloudflare supports, and treats a redirect answer as a failure', async () => {
+    const seen = [];
+    let calls = 0;
+    const fetchImpl = async (url, init) => {
+      calls++;
+      seen.push(init.redirect);
+      // what fetch gives back with redirect manual
+      return new Response(null, { status: 302, headers: { Location: 'https://other.example.test/steal' } });
+    };
+    logged();
+    await expect(sendMail(env, message, { fetchImpl })).rejects.toMatchObject({ code: 'mail_failed' });
+    expect(calls).toBe(1);
+    // Cloudflare's runtime supports only follow and manual
+    expect(['follow', 'manual']).toContain(seen[0]);
+    expect(seen[0]).toBe('manual');
+  });
+
+  it('a stand in fetch that rejects the unsupported value like Cloudflare does still lets a send through', async () => {
+    const fetchImpl = async (url, init) => {
+      if (init.redirect !== 'follow' && init.redirect !== 'manual') throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+      return new Response('{"id":"abc"}', { status: 200 });
+    };
+    await expect(sendMail(env, message, { fetchImpl })).resolves.toBeUndefined();
+  });
+});

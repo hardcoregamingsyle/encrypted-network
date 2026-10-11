@@ -159,7 +159,9 @@ export async function sendMail(env, message, { fetchImpl = globalThis.fetch } = 
           method: 'POST',
           headers: { ...req.headers, 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify(req.body),
-          redirect: 'error',
+          // Cloudflare's runtime has no redirect: 'error' (fetch throws a TypeError), so redirects are not
+          // followed ('manual') and any 3xx answer counts as a failure below (res.ok is false for it).
+          redirect: 'manual',
           signal: controller.signal
         }),
         deadline

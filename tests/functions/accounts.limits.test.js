@@ -213,7 +213,8 @@ describe('mail provider requests', () => {
     await sendMail({ MAIL_PROVIDER: 'brevo', BREVO_API_KEY: 'k', MAIL_FROM: 'a@example.test' }, MSG, {
       fetchImpl: async (url, init) => (seen.push(init), new Response('{}', { status: 200 }))
     });
-    expect(seen[0].redirect).toBe('error');
+    // 'manual', not 'error': Cloudflare's runtime does not support redirect: 'error' and fetch throws a TypeError
+    expect(seen[0].redirect).toBe('manual');
   });
 
   it('a body that never ends does not hold the request past the timeout (success answer of the Cloudflare provider)', async () => {
