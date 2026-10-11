@@ -813,13 +813,13 @@ describe('controls', () => {
     expect(roles).toContain('alert:assertive');
   });
 
-  it('the Mine / Public switch is a named group of buttons and exactly one of them is pressed', () => {
-    for (const [path, expected] of [['/files', 'Mine'], ['/files?tab=public', 'Public']]) {
+  it('the Mine / Public / Private switch is a named group of buttons and exactly one of them is pressed', () => {
+    for (const [path, expected] of [['/files', 'Mine'], ['/files?tab=public', 'Public'], ['/files?tab=private', 'Private']]) {
       const root = parseHtml(page(path, states.easy));
       const group = all(root, (e) => e.attrs.role === 'group' && e.attrs['aria-label'] === 'Which files to show')[0];
       expect(group, path).toBeTruthy();
       const buttons = all(group, (e) => e.tag === 'button');
-      expect(buttons.map((b) => textOf(b))).toEqual(['Mine', 'Public']);
+      expect(buttons.map((b) => textOf(b))).toEqual(['Mine', 'Public', 'Private']);
       expect(buttons.every((b) => b.attrs['aria-pressed'] === 'true' || b.attrs['aria-pressed'] === 'false')).toBe(true);
       expect(buttons.filter((b) => b.attrs['aria-pressed'] === 'true').map((b) => textOf(b)), path).toEqual([expected]);
     }
