@@ -41,9 +41,10 @@ export async function onRequestDelete({ request, env, params }) {
   requireSameOrigin(request);
   const id = idParam(params);
   const auth = await requireAuth(env, request);
-  const res = await env.DB.prepare('DELETE FROM private_files WHERE id = ? AND account_id = ?').bind(id, auth.row.id).run();
-  if (!res.meta || res.meta.changes < 1) throw new ApiError('not_found', 'file not found');
-  await blobStore(env).delete('private/' + id);
+  const mine = await env.DB.prepare('SELECT id FROM private_files WHERE id = ? AND account_id = ?').bind(id, auth.row.id).first();
+  if (!mine) throw new ApiError('not_found', 'file not found');
+  await blobStore(env).delete('private/' + id); // the bytes first: if this fails the row stays and the delete can be tried again
+  await env.DB.prepare('DELETE FROM private_files WHERE id = ? AND account_id = ?').bind(id, auth.row.id).run();
   return authJson(auth, { ok: true });
 }
 
