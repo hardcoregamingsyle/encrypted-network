@@ -63,6 +63,7 @@ export async function onRequestPost({ request, env }) {
   await env.DB.batch([
     env.DB.prepare('UPDATE account_secrets SET created_at = ? WHERE account_id = ? AND EXISTS (SELECT 1 FROM accounts WHERE id = ? AND strict = 0)').bind(auth.now, id, id),
     env.DB.prepare('UPDATE accounts SET strict = 1 WHERE id = ? AND strict = 0').bind(id),
+    env.DB.prepare("UPDATE documents SET viewable = 0 WHERE owner_key_id IN (SELECT key_id FROM account_keys WHERE account_id = ?)").bind(id), // a Strict account keeps no password on the server, so nothing is handed out
     env.DB.prepare('UPDATE account_keys SET wrapped_private = NULL WHERE account_id = ? AND wrapped_private IS NOT NULL').bind(id)
   ]);
   await purgeOldHandover(env, id, auth.now);
