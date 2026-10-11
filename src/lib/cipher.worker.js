@@ -16,7 +16,8 @@ export async function handleCipherMessage(msg) {
         data: msg.data,
         name: msg.name,
         password: msg.password,
-        iterations: msg.iterations
+        iterations: msg.iterations,
+        commitSalt: msg.commitSalt
       });
       return { reply: { id, ok: true, result }, transfer: [result.bytes.buffer] };
     }
