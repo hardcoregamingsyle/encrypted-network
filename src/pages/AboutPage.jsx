@@ -26,8 +26,9 @@ export default function AboutPage() {
             program comes from this same site, see the limits below.
           </p>
           <p>
-            Chats are public. Anyone can read them, and you need to be signed in to write. Private encrypted chats do not
-            exist yet.
+            Chats are public. Anyone can read them, and you need to be signed in to write. A private chat is for the people you
+            add by email: its messages are locked with a group password that nobody picks or sees. The server keeps that
+            password sealed, like the keys of Easy mode, and only gives it to the members.
           </p>
         </section>
 
