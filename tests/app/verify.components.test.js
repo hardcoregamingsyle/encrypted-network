@@ -95,7 +95,8 @@ describe('sections', () => {
     expect(bundle).toContain('not uploaded');
     const file = render(h(FileSection, { pinned: '' }));
     expect(file).toContain('Fingerprint to compare');
-    expect(file).toContain('Unlock and compare');
+    expect(file).toContain('Compare');
+    expect(file).toContain('Document password (optional)');
     expect(file).toContain('never uploaded');
     const audit = render(h(AuditSection, { pinned: '' }));
     expect(audit).toContain('Start the full audit');
