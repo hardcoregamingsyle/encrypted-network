@@ -21,6 +21,7 @@ export async function onRequestGet({ env, params }) {
   const docId = docParam(params);
   const row = await env.DB.prepare(
     'SELECT k.account_id, s.wrapped FROM documents d JOIN account_keys k ON k.key_id = d.owner_key_id ' +
+      'JOIN accounts a ON a.id = k.account_id AND a.strict = 0 ' +
       "JOIN account_secrets s ON s.account_id = k.account_id AND s.doc_id = d.doc_id WHERE d.doc_id = ? AND d.viewable = 1 AND d.status = 'active'"
   )
     .bind(docId)
@@ -45,9 +46,10 @@ export async function onRequestPut({ request, env, params }) {
   const res = await env.DB.prepare(
     "UPDATE documents SET viewable = ? WHERE doc_id = ? AND status = 'active' " +
       'AND EXISTS (SELECT 1 FROM account_keys k WHERE k.key_id = documents.owner_key_id AND k.account_id = ?) ' +
-      'AND (? = 0 OR EXISTS (SELECT 1 FROM account_secrets s WHERE s.account_id = ? AND s.doc_id = documents.doc_id))'
+      'AND (? = 0 OR (EXISTS (SELECT 1 FROM account_secrets s WHERE s.account_id = ? AND s.doc_id = documents.doc_id) ' +
+      'AND EXISTS (SELECT 1 FROM accounts a WHERE a.id = ? AND a.strict = 0)))'
   )
-    .bind(body.on ? 1 : 0, docId, id, body.on ? 1 : 0, id)
+    .bind(body.on ? 1 : 0, docId, id, body.on ? 1 : 0, id, id)
     .run();
   if (!res.meta || res.meta.changes < 1) {
     const doc = await env.DB.prepare('SELECT status FROM documents WHERE doc_id = ?').bind(docId).first();
