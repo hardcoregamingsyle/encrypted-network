@@ -15,7 +15,7 @@ export default function ChatsPage() {
 
   return (
     <div className="ui-screen chat-home">
-      <ScreenHeader title="Chats" subtitle="Public chats" />
+      <ScreenHeader title="Chats" subtitle="Public and private chats" />
       <div className="ui-container chat-home__body">
         <div className="chat-search">
           <label className="ui-sr-only" htmlFor="chat-search-input">
@@ -37,7 +37,7 @@ export default function ChatsPage() {
         </div>
         <ChannelList query={query} reloadKey={reloadKey} onNewChat={() => setSheet(true)} />
         <p className="ui-muted chat-home__note">
-          Anyone can read these chats. Names and previews here come from the server and are not checked. Each message is checked on your device when you open the chat.
+          Anyone can read these chats, except private ones, which show only to the people in them. Names and previews here come from the server and are not checked. Each message is checked on your device when you open the chat.
         </p>
       </div>
       <Fab label="New chat" onClick={() => setSheet(true)} />
