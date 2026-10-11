@@ -7,7 +7,7 @@ How you use it
 - Sign in with your email. We send a 6 digit code, you type it, you pick a name. That is all. Or use Quick start, which needs no email but keeps everything on one device.
 - Add a file with the + button. It is locked in your browser, published, and you get a link to share. File passwords are handled for you and live inside the link.
 - Anyone who opens the link sees a plain answer: verified and up to date, or a warning. The technical checks are under Details.
-- Chats are public and signed. Every message shows whether its signature checked out.
+- Chats are signed. Every message shows whether its signature checked out. Public chats can be read by anyone. Private chats are for the people you add by email.
 - The Verify page is for officials. They can check a link, pin the server key, check a saved bundle without any network, compare a file with its fingerprint, and audit the whole ledger.
 
 What is stored where
@@ -23,7 +23,7 @@ What it does not do
 - Times come from the signers and the server clock. There is no trusted timestamp service.
 - A name is only a name. Nobody checks who the person really is.
 - The ledger is public. Unlisted only hides a document from the list. Labels, names and chat messages are public and cannot be removed.
-- Chats are public. There are no private chats yet.
+- Private chats lock their messages with a group password that nobody picks. The server keeps it sealed and gives it to the members, so the people who run the service could technically open it, like Easy mode keys. It is not end to end.
 - It is a prototype and nobody independent has reviewed it. Do not use it for real legal or government records until that happens.
 
 Run it on your computer
