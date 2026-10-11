@@ -1,13 +1,14 @@
 // GET  /api/channels/:channelId/messages  read the chain (after=<seq>, limit, tail)
 // POST /api/channels/:channelId/messages  post a signed message
 import { LIMITS, isChannelId, validateRecord } from '../../../../shared/records.js';
-import { appendMessage, channelFromRow, CHANNEL_SELECT, loadChannel, messageFromRow, requireChannel } from '../../../_lib/channels.js';
+import { appendMessage, channelFromRow, CHANNEL_SELECT, loadChannel, messageFromRow, requireChannel, requireMember, requireOwnKey } from '../../../_lib/channels.js';
 import { badRequest } from '../../../_lib/errors.js';
 import { headOf, intParam, json, onlyMethods, readSignedBody } from '../../../_lib/http.js';
 import { identityMapFromRows, requireSigner } from '../../../_lib/identities.js';
 import { consumeRate } from '../../../_lib/rate.js';
 import { loadServerKey, serverInfo, signScope } from '../../../_lib/serverKey.js';
 import { ZERO_HASH } from '../../../../shared/encoding.js';
+import { requireSameOrigin } from '../../../_lib/session.js';
 import { assertFresh } from '../../../_lib/time.js';
 
 function channelParam(params) {
@@ -36,6 +37,7 @@ export async function onRequestGet({ request, env, params }) {
     env.DB.prepare('SELECT seq, chain_hash FROM messages WHERE channel_id = ? ORDER BY seq DESC LIMIT 1').bind(channelId)
   ]);
   requireChannel(chanRes.results[0]);
+  if (chanRes.results[0].is_private) await requireMember(env, request, channelId);
 
   let rows = msgRes.results;
   let hasMore = false;
@@ -82,14 +84,22 @@ export async function onRequestPost({ request, env, params }) {
   if (!valid.ok) throw badRequest(valid.error);
   if (record.type !== 'message') throw badRequest('record type must be message');
   if (record.channelId !== channelId) throw badRequest('record.channelId does not match the address');
-  requireChannel(await loadChannel(env, channelId));
+  const channel = requireChannel(await loadChannel(env, channelId));
+  // A private chat answers "not found" to everyone but its members before anything else is looked at.
+  let member = null;
+  if (channel.private) {
+    member = await requireMember(env, request, channelId);
+    requireSameOrigin(request);
+    if (!/^[A-Za-z0-9_-]{39,}$/.test(record.body)) throw badRequest('a message in a private chat has to be locked first');
+  }
 
   const now = Date.now();
   assertFresh(record.createdAt, LIMITS.RECORD_TIME_WINDOW_MS, now);
   await requireSigner(env, record, signature);
   await consumeRate(env, 'message', record.signer, now);
+  if (member) await requireOwnKey(env, member, record.signer);
 
-  return json(await appendMessage(env, record, signature), 201);
+  return json(await appendMessage(env, record, signature, { hidePreview: channel.private === true }), 201);
 }
 
 export const onRequest = onlyMethods('GET', 'POST');
