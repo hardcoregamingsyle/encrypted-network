@@ -1,8 +1,12 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import Button from '../Button.jsx';
 import Callout from '../Callout.jsx';
+import Field from '../Field.jsx';
 import Sheet from '../Sheet.jsx';
 import AnchorStatus from './AnchorStatus.jsx';
-import { POLL_MS } from '../../lib/chatClient.js';
+import { addChannelMembers } from '../../lib/api.js';
+import { POLL_MS, describeApiError, emailsFrom } from '../../lib/chatClient.js';
 import { formatTime, textOf } from '../../lib/format.js';
 import { isTrustMismatch } from './roomLogic.js';
 
@@ -13,9 +17,49 @@ function pollWords(poll) {
   return `Looking for new messages every ${POLL_MS / 1000} seconds.`;
 }
 
+// Private chats: any member can add more people by email.
+function AddPeople({ channelId }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [note, setNote] = useState('');
+
+  async function submit(e) {
+    e.preventDefault();
+    const members = emailsFrom(text);
+    if (busy) return;
+    if (members.length === 0) return setError('Add at least one email address.');
+    setBusy(true);
+    setError('');
+    setNote('');
+    try {
+      const done = await addChannelMembers(channelId, members);
+      setText('');
+      setNote(done.added > 0 ? 'Added.' : 'They are in this chat already.');
+    } catch (err) {
+      setError(describeApiError(err, 'add people').message);
+    }
+    setBusy(false);
+  }
+
+  return (
+    <form className="ui-stack" onSubmit={submit} noValidate>
+      <Field label="Add people" error={error} hint="Their email addresses, separated by commas. Each needs an account here. New people can read the whole chat.">
+        <input type="text" value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} autoComplete="off" autoCapitalize="none" spellCheck={false} />
+      </Field>
+      <Button type="submit" loading={busy}>
+        Add
+      </Button>
+      <p className="ui-muted" role="status">
+        {note}
+      </p>
+    </form>
+  );
+}
+
 // The technical side of one chat, for people who want it: what the server states (not signature
 // checked) and what this device checked. The main screen only shows a short line about it.
-export default function RoomDetails({ open, onClose, channelId, view, poll, trust }) {
+export default function RoomDetails({ open, onClose, channelId, view, poll, trust, isPrivate = false }) {
   const channel = view.channel;
   const startedBy = channel ? textOf(channel.createdByName) : '';
   const docId = channel ? textOf(channel.docId) : '';
@@ -24,6 +68,7 @@ export default function RoomDetails({ open, onClose, channelId, view, poll, trus
   return (
     <Sheet open={open} onClose={onClose} title="Chat details">
       <div className="ui-stack chat-details">
+        {isPrivate ? <AddPeople channelId={channelId} /> : null}
         <section aria-labelledby="chat-det-server">
           <h3 id="chat-det-server" className="chat-details__h">
             What the server says
