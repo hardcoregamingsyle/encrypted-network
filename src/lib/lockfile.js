@@ -164,7 +164,7 @@ async function aesKeyOf(raw, usage) {
   return subtle().importKey('raw', raw, { name: 'AES-GCM' }, false, [usage]);
 }
 
-export async function lockFile({ data, name, password, iterations = DEFAULT_ITERATIONS }) {
+export async function lockFile({ data, name, password, iterations = DEFAULT_ITERATIONS, commitSalt: given }) {
   if (!(data instanceof Uint8Array)) throw new Error('data must be a Uint8Array');
   if (typeof name !== 'string') throw new Error('file name must be text');
   const nameBytes = new TextEncoder().encode(name);
@@ -178,7 +178,8 @@ export async function lockFile({ data, name, password, iterations = DEFAULT_ITER
 
   const rand = (n) => globalThis.crypto.getRandomValues(new Uint8Array(n));
   const fileHash = await sha256(data);
-  const commitSalt = rand(COMMIT_SALT_LEN);
+  if (given !== undefined && !(given instanceof Uint8Array && given.length === COMMIT_SALT_LEN)) throw new Error('bad commit salt');
+  const commitSalt = given || rand(COMMIT_SALT_LEN);
   const commitment = await commitmentOf(commitSalt, fileHash);
 
   // payload
