@@ -1,14 +1,16 @@
 // GET    /api/me  the signed in account and its keys
-// DELETE /api/me  delete the account: sessions, codes, key links, stored keys and passwords, and the rate
+// DELETE /api/me  delete the account: private files, sessions, codes, key links, stored keys and passwords, and the rate
 //                 limit counts kept under the hash of the email. Needs a session made in the last 15 minutes
 //                 (sign in again with a new code first, otherwise 401 reauth_required).
 // Public identities and the ledger stay: they are signed history. A key that was linked to the account
 // can be linked to a new account later by sending its private key again (see POST /api/me/key).
 import { accountKeyRows, authJson, clearedJson, purgeOldHandover } from '../../_lib/accounts.js';
 import { atRest } from '../../_lib/atRest.js';
+import { ApiError } from '../../_lib/errors.js';
 import { onlyMethods } from '../../_lib/http.js';
 import { forgetRate } from '../../_lib/rate.js';
 import { accountFromRow, requireAuth, requireFresh, requireSameOrigin } from '../../_lib/session.js';
+import { blobStore } from '../../_lib/store.js';
 
 export async function onRequestGet({ request, env }) {
   await atRest(env);
@@ -30,7 +32,17 @@ export async function onRequestDelete({ request, env }) {
   requireFresh(auth);
   const id = auth.row.id;
   const hash = auth.row.email_hash;
+  // Private files go first, 40 at a time (a request may only make about 50 storage calls). With more left
+  // the answer is 409 and the same request is sent again.
+  const files = (await env.DB.prepare('SELECT id FROM private_files WHERE account_id = ? LIMIT 41').bind(id).all()).results;
+  const some = files.slice(0, 40);
+  for (const f of some) await blobStore(env).delete('private/' + f.id);
+  if (files.length > 40) {
+    await env.DB.prepare(`DELETE FROM private_files WHERE id IN (${some.map(() => '?').join(',')})`).bind(...some.map((f) => f.id)).run();
+    throw new ApiError('conflict', 'your private files are still being removed, delete again to finish');
+  }
   await env.DB.batch([
+    env.DB.prepare('DELETE FROM private_files WHERE account_id = ?').bind(id),
     env.DB.prepare('DELETE FROM sessions WHERE account_id = ?').bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE email_hash = ?').bind(hash),
     env.DB.prepare('DELETE FROM account_secrets WHERE account_id = ?').bind(id),
