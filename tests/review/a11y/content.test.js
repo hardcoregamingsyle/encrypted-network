@@ -279,16 +279,10 @@ describe('consistent wording', () => {
   });
 
   it('chats are called public chats wherever the page says what they are', () => {
-    expect(read('src/pages/ChatsPage.jsx')).toMatch(/subtitle="Public chats"/);
+    expect(read('src/pages/ChatsPage.jsx')).toMatch(/subtitle="Public and private chats"/);
     expect(read('src/components/chat/ChannelView.jsx')).toMatch(/Public chat/);
-    // the only place that names private chats says they do not exist yet
-    const claims = find(/\b(private|encrypted|secret) chats?\b/i).filter((where) => {
-      const [file, line] = where.split(':');
-      const rows = read(file).split('\n');
-      // the sentence may wrap onto the next line
-      return !/(do not|does not|not)\s+exist/i.test(rows[Number(line) - 1] + ' ' + rows[Number(line)]);
-    });
-    expect(claims).toEqual([]);
+    // private chats exist, but no page may call them end to end: the server keeps the group password sealed and can open it
+    expect(find(/end[- ]to[- ]end/i)).toEqual([]);
   });
 
   it('DEFECT: "verify-only link" is spelled one way', () => {
