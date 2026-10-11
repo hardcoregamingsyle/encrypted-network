@@ -41,6 +41,6 @@ To test against a running server: node scripts/e2e.mjs http://127.0.0.1:8788
 
 Put it online
 
-It is made for Cloudflare Pages with D1 and R2. The steps and the limits are in scripts/DEPLOY.md.
+It is made for Cloudflare Pages with D1 (the database) and KV (the locked files). Files can be up to 20 MiB. The steps and the limits are in scripts/DEPLOY.md.
 
 An AI coding assistant helped write this code.
