@@ -53,9 +53,10 @@ const noText = (value) => {
 };
 
 describe('tabs', () => {
-  it('has Mine and Public, and Mine is the default', () => {
-    expect(TABS.map((t) => t.label)).toEqual(['Mine', 'Public']);
+  it('has Mine, Public and Private, and Mine is the default', () => {
+    expect(TABS.map((t) => t.label)).toEqual(['Mine', 'Public', 'Private']);
     expect(tabFromSearch('public')).toBe('public');
+    expect(tabFromSearch('private')).toBe('private');
     expect(tabFromSearch('mine')).toBe('mine');
     expect(tabFromSearch(null)).toBe('mine');
     expect(tabFromSearch('<script>')).toBe('mine');
