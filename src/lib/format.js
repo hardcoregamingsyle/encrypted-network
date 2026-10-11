@@ -2,7 +2,7 @@
 
 const UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
 
-// 0 -> "0 B", 1536 -> "1.5 KiB", 52428800 -> "50 MiB". Bad input gives an empty string.
+// 0 -> "0 B", 1536 -> "1.5 KiB", 20971520 -> "20 MiB". Bad input gives an empty string.
 export function formatBytes(n) {
   if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return '';
   let value = n;
@@ -48,7 +48,7 @@ export function formatUtc(ms) {
   }
 }
 
-// "is 50 MiB and 1 byte over the 50 MiB limit": exact, so rounding never makes the sentence contradict itself.
+// "is 20 MiB and 1 byte over the 20 MiB limit": exact, so rounding never makes the sentence contradict itself.
 export function overLimitText(size, limit) {
   if (typeof size !== 'number' || typeof limit !== 'number' || !Number.isFinite(size) || !Number.isFinite(limit) || size <= limit) return '';
   const over = size - limit;

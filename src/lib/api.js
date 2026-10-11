@@ -10,8 +10,8 @@ export class ApiError extends Error {
   }
 }
 
-// Largest locked file the server may hold: 50 MiB of file plus the lock header and tag.
-export const MAX_BLOB_BYTES = 52428800 + 4096;
+// Largest locked file the server may hold: 20 MiB of file plus the lock header and tag.
+export const MAX_BLOB_BYTES = 20971520 + 4096;
 // Largest JSON answer read from the server. A hostile server cannot make the tab read without end.
 export const MAX_JSON_BYTES = 8 * 1024 * 1024;
 

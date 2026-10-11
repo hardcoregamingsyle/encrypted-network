@@ -30,7 +30,7 @@ export const SUITE = 1;
 export const MIN_ITERATIONS = 100000;
 export const MAX_ITERATIONS = 2000000;
 export const DEFAULT_ITERATIONS = 600000;
-export const MAX_FILE_BYTES = 52428800; // 50 MiB of plaintext
+export const MAX_FILE_BYTES = 20971520; // 20 MiB of plaintext
 export const MAX_NAME_BYTES = 1024;
 
 const HEADER_LEN = 53;
@@ -103,7 +103,7 @@ export function generatePassword() {
 // throws if a file of this size or a name of this size is not allowed
 export function assertSizes(fileBytes, nameBytes) {
   if (!Number.isSafeInteger(fileBytes) || fileBytes < 0) throw new Error('bad file size');
-  if (fileBytes > MAX_FILE_BYTES) throw new Error('file is too large (50 MiB limit)');
+  if (fileBytes > MAX_FILE_BYTES) throw new Error('file is too large (20 MiB limit)');
   if (nameBytes > MAX_NAME_BYTES) throw new Error('file name is too long');
 }
 

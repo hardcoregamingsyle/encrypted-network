@@ -272,7 +272,7 @@ describe('form checks', () => {
   it('versionProblem', () => {
     expect(versionProblem({ file: null, label: '', mode: 'reuse', reusePassword: PW })).toMatch(/Choose/);
     expect(versionProblem({ file: { name: 'a', size: 0 }, label: '', mode: 'reuse', reusePassword: PW })).toMatch(/empty/);
-    expect(versionProblem({ file: { name: 'a', size: 52428801 }, label: '', mode: 'reuse', reusePassword: PW })).toMatch(/too large/);
+    expect(versionProblem({ file: { name: 'a', size: 20971521 }, label: '', mode: 'reuse', reusePassword: PW })).toMatch(/too large/);
     expect(versionProblem({ file: { name: ' ', size: 5 }, label: '', mode: 'reuse', reusePassword: PW })).toMatch(/no name/);
     expect(versionProblem({ file, label: 'x'.repeat(121), mode: 'reuse', reusePassword: PW })).toMatch(/too long/);
     expect(versionProblem({ file, label: '', mode: 'reuse', reusePassword: '' })).toMatch(/Unlock the file/);

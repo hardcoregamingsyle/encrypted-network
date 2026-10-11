@@ -15,7 +15,7 @@ import { forgetDoc, rememberDoc } from './localDocs.js';
 import { outcomeUnknown } from './outcome.js';
 import { generatePassword, normalizePassword } from './lockfile.js';
 
-const MAX_FILE_BYTES = 52428800;
+const MAX_FILE_BYTES = 20971520;
 const MAX_LABEL = 120;
 
 function step(onStep, id, text) {
@@ -65,12 +65,12 @@ async function readFile(file, onStep) {
   if (name === '') throw new Error('the file has no name');
   if (Number.isFinite(file.size)) {
     if (file.size < 1) throw new Error('the file is empty');
-    if (file.size > MAX_FILE_BYTES) throw new Error('file is too large (50 MiB limit)');
+    if (file.size > MAX_FILE_BYTES) throw new Error('file is too large (20 MiB limit)');
   }
   step(onStep, 'read', 'Reading the file');
   const data = new Uint8Array(await file.arrayBuffer());
   if (data.length < 1) throw new Error('the file is empty');
-  if (data.length > MAX_FILE_BYTES) throw new Error('file is too large (50 MiB limit)');
+  if (data.length > MAX_FILE_BYTES) throw new Error('file is too large (20 MiB limit)');
   return { name, data };
 }
 

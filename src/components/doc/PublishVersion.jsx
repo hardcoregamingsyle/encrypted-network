@@ -100,7 +100,7 @@ export default function PublishVersion({ docId, head, identity, unlockedWith, on
       </p>
 
       <form className="ui-stack" onSubmit={submit} noValidate>
-        <Field label="New file" hint="Up to 50 MiB.">
+        <Field label="New file" hint="Up to 20 MiB.">
           <input
             key={fileKey}
             type="file"

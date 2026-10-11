@@ -45,7 +45,7 @@ describe('fileProblem', () => {
     expect(fileProblem({ name: '   ', size: 5 })).toMatch(/no name/);
     expect(fileProblem({ name: 'a', size: NaN })).toMatch(/not known/);
     const big = fileProblem({ name: 'a', size: MAX_FILE_BYTES + 1 });
-    expect(big).toMatch(/1 byte over the limit of 50 MiB/);
+    expect(big).toMatch(/1 byte over the limit of 20 MiB/);
   });
 });
 

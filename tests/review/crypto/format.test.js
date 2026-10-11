@@ -260,7 +260,7 @@ describe('malformed payloads behind a valid lock', () => {
     await expectSpecError(unlockFile(await build({ payload }), password), DAMAGED);
   });
 
-  it('a payload carrying more than 50 MiB is refused without crashing', async () => {
+  it('a payload carrying more than 20 MiB is refused without crashing', async () => {
     const file = new Uint8Array(MAX_FILE_BYTES + 1);
     const payload = await goodPayload({ name: '', file });
     const bytes = await build({ payload });
@@ -321,11 +321,11 @@ describe('malformed input never hangs or throws something unexpected', () => {
 });
 
 describe('limits at the real edges', () => {
-  it('50 MiB file with a 1024 byte name round trips and fits the blob size limit in the records spec', async () => {
+  it('20 MiB file with a 1024 byte name round trips and fits the blob size limit in the records spec', async () => {
     const data = rnd(MAX_FILE_BYTES);
     const name = 'n'.repeat(MAX_NAME_BYTES);
     const r = await lockFile({ data, name, password, iterations: FAST });
-    expect(r.size).toBeLessThanOrEqual(52428800 + 4096);
+    expect(r.size).toBeLessThanOrEqual(20971520 + 4096);
     expect(r.size).toBe(MAX_LOCKED_BYTES);
     const back = await unlockFile(r.bytes, password);
     expect(back.name).toBe(name);
@@ -334,7 +334,7 @@ describe('limits at the real edges', () => {
     expect(back.fileHash).toBe(r.fileHash);
   }, 240000);
 
-  it('50 MiB + 1 is refused by lockFile', async () => {
+  it('20 MiB + 1 is refused by lockFile', async () => {
     const data = new Uint8Array(MAX_FILE_BYTES + 1);
     await expect(lockFile({ data, name: 'x', password, iterations: FAST })).rejects.toThrow('file is too large');
   });

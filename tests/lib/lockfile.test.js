@@ -435,8 +435,8 @@ describe('names and limits', () => {
     expect((await unlockFile(r2.bytes, password)).name).toBe(edgeOk);
   });
 
-  it('assertSizes enforces 50 MiB without allocating it', () => {
-    expect(MAX_FILE_BYTES).toBe(52428800);
+  it('assertSizes enforces 20 MiB without allocating it', () => {
+    expect(MAX_FILE_BYTES).toBe(20971520);
     expect(() => assertSizes(MAX_FILE_BYTES, 10)).not.toThrow();
     expect(() => assertSizes(MAX_FILE_BYTES + 1, 10)).toThrow('file is too large');
     expect(() => assertSizes(-1, 10)).toThrow();
@@ -445,7 +445,7 @@ describe('names and limits', () => {
     expect(() => assertSizes(0, 1025)).toThrow('file name is too long');
   });
 
-  it('lockFile applies the 50 MiB limit before doing any work', async () => {
+  it('lockFile applies the 20 MiB limit before doing any work', async () => {
     const spy = vi.spyOn(subtle, 'digest');
     const fake = (len) => new Proxy(new Uint8Array(1), {
       get(target, prop) { return prop === 'length' ? len : Reflect.get(target, prop); }

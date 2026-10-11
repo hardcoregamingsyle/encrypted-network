@@ -231,10 +231,10 @@ describe('time and ids', () => {
   });
 
   it('a size error never contradicts itself through rounding', () => {
-    const MAX = 52428800;
+    const MAX = 20971520;
     const text = overLimitText(MAX + 1, MAX);
-    expect(text).toContain('52,428,801 bytes');
-    expect(text).toContain('1 byte over the limit of 50 MiB');
+    expect(text).toContain('20,971,521 bytes');
+    expect(text).toContain('1 byte over the limit of 20 MiB');
     expect(overLimitText(MAX, MAX)).toBe('');
     expect(overLimitText('x', MAX)).toBe('');
   });

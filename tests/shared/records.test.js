@@ -92,8 +92,8 @@ describe('constants', () => {
     expect(DOC_RECORD_TYPES).toEqual(['doc.create', 'doc.update', 'doc.revoke']);
   });
   it('limits match the spec', () => {
-    expect(LIMITS.MAX_FILE_BYTES).toBe(52428800);
-    expect(LIMITS.MAX_BLOB_BYTES).toBe(52428800 + 4096);
+    expect(LIMITS.MAX_FILE_BYTES).toBe(20971520);
+    expect(LIMITS.MAX_BLOB_BYTES).toBe(20971520 + 4096);
     expect(LIMITS.DISPLAY_NAME_MAX).toBe(40);
     expect(LIMITS.BODY_MAX).toBe(2000);
     expect(LIMITS.RECORD_TIME_WINDOW_MS).toBe(600000);
@@ -249,8 +249,8 @@ describe('doc records', () => {
       expect(valid(withSize(1)), t).toBe(true);
       expect(valid(withSize(0)), t).toBe(false);
       expect(valid(withSize(-5)), t).toBe(false);
-      expect(valid(withSize(52428800 + 4096)), t).toBe(true);
-      expect(valid(withSize(52428800 + 4097)), t).toBe(false);
+      expect(valid(withSize(20971520 + 4096)), t).toBe(true);
+      expect(valid(withSize(20971520 + 4097)), t).toBe(false);
       expect(valid(withSize(1.5)), t).toBe(false);
       expect(valid(withSize('100')), t).toBe(false);
     }
@@ -317,8 +317,8 @@ describe('blob.put and checkpoint', () => {
   it('blob.put size boundaries', () => {
     expect(valid({ ...make['blob.put'](), size: 0 })).toBe(false);
     expect(valid({ ...make['blob.put'](), size: 1 })).toBe(true);
-    expect(valid({ ...make['blob.put'](), size: 52428800 + 4096 })).toBe(true);
-    expect(valid({ ...make['blob.put'](), size: 52428800 + 4097 })).toBe(false);
+    expect(valid({ ...make['blob.put'](), size: 20971520 + 4096 })).toBe(true);
+    expect(valid({ ...make['blob.put'](), size: 20971520 + 4097 })).toBe(false);
   });
   it('checkpoint scope, seq and hash rules', () => {
     const cp = make.checkpoint;

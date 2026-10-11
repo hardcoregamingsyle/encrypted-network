@@ -8,7 +8,7 @@ import { normalizePassword } from '../../lib/lockfile.js';
 export const REVOKE_WORD = 'REVOKE';
 export const REASON_MAX = 500;
 export const LABEL_MAX = 120;
-export const MAX_FILE_BYTES = 52428800;
+export const MAX_FILE_BYTES = 20971520;
 export const BUNDLE_KIND = 'hrdlock-verification-bundle';
 
 const PASSWORD_ALPHABET = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{20}$/;

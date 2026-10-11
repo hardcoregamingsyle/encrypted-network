@@ -100,7 +100,7 @@ describe('field attacks that must all be rejected', () => {
     add(t, 'blob.size 0', set(['blob', 'size'], 0));
     add(t, 'blob.size negative', set(['blob', 'size'], -5));
     add(t, 'blob.size float', set(['blob', 'size'], 10.5));
-    add(t, 'blob.size above max', set(['blob', 'size'], 52428800 + 4096 + 1));
+    add(t, 'blob.size above max', set(['blob', 'size'], 20971520 + 4096 + 1));
     add(t, 'blob.size string', set(['blob', 'size'], '100'));
     add(t, 'blob.suite 2', set(['blob', 'suite'], 2));
     add(t, 'blob.suite missing', set(['blob', 'suite'], undefined));
@@ -174,7 +174,7 @@ describe('field attacks that must all be rejected', () => {
   add('message', 'channelId invalid', set(['channelId'], 'A'));
   add('blob.put', 'hash uppercase', set(['hash'], 'B'.repeat(64)));
   add('blob.put', 'size 0', set(['size'], 0));
-  add('blob.put', 'size above max', set(['size'], 52428800 + 4097));
+  add('blob.put', 'size above max', set(['size'], 20971520 + 4097));
   add('blob.put', 'size float', set(['size'], 1.5));
   add('checkpoint', 'scope empty', set(['scope'], ''));
   add('checkpoint', 'scope ledger with space', set(['scope'], 'ledger '));
@@ -210,7 +210,7 @@ describe('values that must stay valid (no over rejection)', () => {
     const s = await samples();
     const b = structuredClone(s['doc.create']);
     b.label = '\u{1F600}'.repeat(120); // 120 code points, 240 UTF-16 units
-    b.blob.size = 52428800 + 4096;
+    b.blob.size = 20971520 + 4096;
     expect(validateRecord(b).ok).toBe(true);
     b.label = '\u{1F600}'.repeat(121);
     expect(validateRecord(b).ok).toBe(false);

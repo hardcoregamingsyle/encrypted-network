@@ -284,7 +284,7 @@ describe('chat markup', () => {
 
 describe('controls', () => {
   it('the drop zone has a real file input named by its label and a visible focus wrapper', () => {
-    const html = renderToString(h(DropZone, { file: null, onFile() {}, onClear() {}, limitText: 'Up to 50 MiB.' }));
+    const html = renderToString(h(DropZone, { file: null, onFile() {}, onClear() {}, limitText: 'Up to 20 MiB.' }));
     expect(lint(html)).toEqual([]);
     const input = all(parseHtml(html), (e) => e.tag === 'input')[0];
     expect(input.attrs.type).toBe('file');

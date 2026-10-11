@@ -7,7 +7,7 @@ import { normalizePublicJwkShape } from './keys.js';
 
 export { ZERO_HASH, chainHash };
 
-const MAX_FILE_BYTES = 52428800;
+const MAX_FILE_BYTES = 20971520;
 
 export const LIMITS = Object.freeze({
   MAX_FILE_BYTES,
@@ -20,7 +20,7 @@ export const LIMITS = Object.freeze({
   BODY_MAX: 2000,
   RECORD_TIME_WINDOW_MS: 10 * 60 * 1000,
   BLOB_TIME_WINDOW_MS: 5 * 60 * 1000,
-  SIGNER_BLOB_QUOTA_BYTES: 500 * 1024 * 1024,
+  SIGNER_BLOB_QUOTA_BYTES: 200 * 1024 * 1024,
   MAX_TIME_MS: 8.64e15,
   RATE: Object.freeze({
     IDENTITY_PER_HOUR_PER_IP: 10,

@@ -8,7 +8,7 @@ describe('formatBytes', () => {
     expect(formatBytes(1023)).toBe('1023 B');
     expect(formatBytes(1024)).toBe('1 KiB');
     expect(formatBytes(1536)).toBe('1.5 KiB');
-    expect(formatBytes(52428800)).toBe('50 MiB');
+    expect(formatBytes(20971520)).toBe('20 MiB');
     expect(formatBytes(1024 ** 3)).toBe('1 GiB');
     expect(formatBytes(250 * 1024)).toBe('250 KiB');
   });

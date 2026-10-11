@@ -220,10 +220,10 @@ describe('publishNewDocument', () => {
     await expect(publishNewDocument({ ...base, file: new File([], 'empty.txt') })).rejects.toThrow('the file is empty');
     await expect(publishNewDocument({ ...base, file: makeFile('x', '   ') })).rejects.toThrow('the file has no name');
     await expect(publishNewDocument({ ...base, file: makeFile('x', 'n'.repeat(1100)) })).rejects.toThrow(/name is too long/);
-    const huge = { name: 'big.bin', size: 52428801, arrayBuffer: async () => new ArrayBuffer(0) };
-    await expect(publishNewDocument({ ...base, file: huge })).rejects.toThrow('file is too large (50 MiB limit)');
-    const lying = { name: 'big.bin', size: 5, arrayBuffer: async () => new ArrayBuffer(52428801) };
-    await expect(publishNewDocument({ ...base, file: lying })).rejects.toThrow('file is too large (50 MiB limit)');
+    const huge = { name: 'big.bin', size: 20971521, arrayBuffer: async () => new ArrayBuffer(0) };
+    await expect(publishNewDocument({ ...base, file: huge })).rejects.toThrow('file is too large (20 MiB limit)');
+    const lying = { name: 'big.bin', size: 5, arrayBuffer: async () => new ArrayBuffer(20971521) };
+    await expect(publishNewDocument({ ...base, file: lying })).rejects.toThrow('file is too large (20 MiB limit)');
     const liar2 = { name: 'e.bin', size: 5, arrayBuffer: async () => new ArrayBuffer(0) };
     await expect(publishNewDocument({ ...base, file: liar2 })).rejects.toThrow('the file is empty');
     expect(names()).toEqual([]);

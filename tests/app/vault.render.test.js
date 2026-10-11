@@ -82,7 +82,7 @@ describe('PublishForm', () => {
     expect(html).toContain('Show in the public list');
     expect(html).toContain('locked in this browser');
     expect(html).toContain('Not public:');
-    expect(html).toContain('50 MiB');
+    expect(html).toContain('20 MiB');
     expect(html).toContain('type="submit"');
     expect(html).toContain('disabled');
     // the publish button is disabled until a file is chosen
@@ -100,11 +100,11 @@ describe('PublishForm', () => {
 
 describe('DropZone', () => {
   it('has a labelled file input and the size limit text', () => {
-    const html = render(h(DropZone, { file: null, onFile() {}, onClear() {}, limitText: 'Up to 50 MiB.' }));
+    const html = render(h(DropZone, { file: null, onFile() {}, onClear() {}, limitText: 'Up to 20 MiB.' }));
     expect(html).toContain('type="file"');
     expect(html).toContain('<label');
     expect(html).toContain('Drop a file here, or choose one');
-    expect(html).toContain('Up to 50 MiB.');
+    expect(html).toContain('Up to 20 MiB.');
     expect(html).not.toContain('Remove file');
   });
 

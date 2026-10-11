@@ -268,13 +268,13 @@ describe('FINDING 7: a failed record post leaves the uploaded blob behind and ev
     await expect(publishNewVersion(args)).rejects.toThrow();
     await publishNewVersion(args);
     const hashes = new Set(fake.state.puts.map((p) => p.hash));
-    expect(hashes.size, 'blobs stored on the server for one logical update (each counts against the 500 MiB quota)').toBe(1);
+    expect(hashes.size, 'blobs stored on the server for one logical update (each counts against the 200 MiB quota)').toBe(1);
   });
 });
 
 describe('FINDING 8: the locked file is read from the network without a size limit', () => {
-  it('getBlob stops reading once the body is larger than any signed blob can be (50 MiB + 4096)', async () => {
-    const LIMIT = 52428800 + 4096;
+  it('getBlob stops reading once the body is larger than any signed blob can be (20 MiB + 4096)', async () => {
+    const LIMIT = 20971520 + 4096;
     const CHUNK = 1024 * 1024;
     let pulled = 0;
     const body = new ReadableStream({
