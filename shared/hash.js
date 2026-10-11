@@ -3,6 +3,10 @@ import { ZERO_HASH, bytesToHex, concatBytes, hexToBytes, isHex, toBytes, utf8Enc
 
 export { ZERO_HASH };
 
+// Public files are locked with this salt (16 zero bytes, as hex) in their commitment, so anyone who holds the plain file
+// can work the commitment out again and check the file against the signed record. Private files use a random salt.
+export const PUBLIC_COMMIT_SALT = '0'.repeat(32);
+
 export async function sha256Bytes(input) {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', toBytes(input));
   return new Uint8Array(digest);
