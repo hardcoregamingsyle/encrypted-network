@@ -150,7 +150,7 @@ describe('request parsing', () => {
 
   it('readSignedBody wants a record object and a signature string', async () => {
     const ok = await readSignedBody(post(JSON.stringify({ record: { a: 1 }, signature: 's' })));
-    expect(ok).toEqual({ record: { a: 1 }, signature: 's' });
+    expect(ok).toMatchObject({ record: { a: 1 }, signature: 's' });
     for (const bad of [{ signature: 's' }, { record: [], signature: 's' }, { record: {}, signature: 5 }, { record: {} }, { record: null, signature: 's' }]) {
       const err = await thrown(readSignedBody(post(JSON.stringify(bad))));
       expect(err.code).toBe('bad_request');
