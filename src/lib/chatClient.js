@@ -192,6 +192,11 @@ export function sortChannels(channels) {
 
 // The new chat form: a title and an optional linked file (id or link). The chat id is made for the
 // person, see newChannelId. Returns { ok, values: { title, docId }, errors: { title?, docId? } }.
+// The email addresses typed into a box: split at commas, semicolons and spaces, empty ones dropped, no repeats.
+export function emailsFrom(text) {
+  return [...new Set(String(text || '').split(/[\s,;]+/).filter(Boolean))];
+}
+
 export function checkNewChatInput({ title, docId } = {}) {
   const res = checkChannelInput({ title, channelId: 'general', docId });
   const errors = {};
@@ -200,7 +205,7 @@ export function checkNewChatInput({ title, docId } = {}) {
   return { ok: Object.keys(errors).length === 0, values: { title: res.values.title, docId: res.values.docId }, errors };
 }
 
-function randomHex(n) {
+export function randomHex(n) {
   const bytes = new Uint8Array(Math.ceil(n / 2));
   globalThis.crypto.getRandomValues(bytes);
   let out = '';
