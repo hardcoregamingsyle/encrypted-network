@@ -16,6 +16,7 @@ const NEAR_BOTTOM_PX = 48;
 //   onMenu(entry)              opens the message menu (the touch way to reply)
 export default function MessageList({
   entries,
+  isPrivate = false,
   pending = [],
   identities = {},
   ownKeyId = '',
@@ -145,7 +146,7 @@ export default function MessageList({
         ) : null}
         {empty ? (
           <EmptyState art="chats" title="No messages yet" className="chat-empty">
-            Say hello. Everyone can read this chat, and your message is signed with your key.
+            {isPrivate ? 'Say hello. Only the people in this chat can read it, and your message is signed with your key.' : 'Say hello. Everyone can read this chat, and your message is signed with your key.'}
           </EmptyState>
         ) : (
           <ol className="chat-msgs">
