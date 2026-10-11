@@ -196,7 +196,8 @@ describe('health', () => {
   it('reports whether a server signing key is set', async () => {
     const { env } = setup();
     const without = await (await health.onRequestGet({ env: { ...env, FILES: { head: async () => null } } })).json();
-    expect(without).toEqual({ ok: true, signing: false });
+    // v3 added mail, mailConfigured and accounts (nothing configured here: all off)
+    expect(without).toEqual({ ok: true, schema: true, signing: false, mail: 'none', mailConfigured: 'none', accounts: false });
   });
 });
 

@@ -111,7 +111,24 @@ describe('wrangler.toml', () => {
     expect(toml).toMatch(/migrations_dir\s*=\s*"migrations"/);
     const used = new Set();
     for (const f of walk(join(ROOT, 'functions'))) for (const m of code(f).matchAll(/env\.([A-Z_]+)/g)) used.add(m[1]);
-    expect([...used].sort()).toEqual(['BLOBS', 'DB', 'FILES', 'SERVER_SIGNING_JWK']);
+    // accounts and email (scripts/DEPLOY.md): ACCOUNT_MASTER_KEY and the MAIL_* / provider settings are secrets
+    expect([...used].sort()).toEqual(
+      [
+        'ACCOUNT_MASTER_KEY',
+        'BLOBS',
+        'BREVO_API_KEY',
+        'CF_ACCOUNT_ID',
+        'CF_EMAIL_TOKEN',
+        'DB',
+        'FILES',
+        'MAIL_FROM',
+        'MAIL_FROM_ADDRESS',
+        'MAIL_FROM_NAME',
+        'MAIL_PROVIDER',
+        'RESEND_API_KEY',
+        'SERVER_SIGNING_JWK'
+      ].sort()
+    );
   });
   it('compatibility_date is not in the future and no node compat flag is needed', () => {
     const d = toml.match(/compatibility_date\s*=\s*"(\d{4}-\d{2}-\d{2})"/)[1];

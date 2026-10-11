@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const dir = dirname(fileURLToPath(import.meta.url));
 const base = process.argv[2] || 'http://127.0.0.1:8791';
 const heavy = process.argv.includes('--heavy');
-const scripts = ['auth', 'chain', 'ledger', 'inject', 'input', 'blobs', 'rate', 'leaks', 'channelspam', 'channelcost', 'multiisolate'];
+const scripts = ['auth', 'chain', 'ledger', 'inject', 'input', 'blobs', 'rate', 'leaks', 'channelspam', 'channelcost', 'multiisolate', 'accounts'];
 if (heavy) scripts.push('blobquota');
 scripts.push('invariants');
 

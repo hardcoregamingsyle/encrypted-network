@@ -117,7 +117,7 @@ function isLocalHost(hostname) {
 }
 
 // Turns the 8 groups of an IPv6 address text into numbers, or returns null when it is not one.
-function ipv6Groups(text) {
+export function ipv6Groups(text) {
   let t = text;
   const dot = t.lastIndexOf('.');
   if (dot !== -1) {
@@ -167,6 +167,48 @@ export function rateKeyForRequest(request) {
     throw new ApiError('forbidden', 'the address of this request could not be determined');
   }
   return addressKey(ip);
+}
+
+// The key for a whole network, for limits that a person who controls many addresses of one network would
+// otherwise walk around. An IPv6 subscriber or a hosting customer normally holds a /48 (65536 blocks of
+// /64, each its own key in addressKey). Returns 'v6net:a:b:c' for IPv6, and null for IPv4 (one IPv4
+// address is already one source) and for anything that does not parse.
+export function networkKey(address) {
+  let ip = String(address).trim().toLowerCase();
+  if (ip.startsWith('[') && ip.includes(']')) ip = ip.slice(1, ip.indexOf(']'));
+  const zone = ip.indexOf('%');
+  if (zone !== -1) ip = ip.slice(0, zone);
+  if (!ip.includes(':')) return null;
+  const g = ipv6Groups(ip);
+  if (!g) return null;
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return null;
+  return 'v6net:' + g.slice(0, 3).map((x) => x.toString(16)).join(':');
+}
+
+// networkKey of the address Cloudflare saw (null when there is none or it is not IPv6).
+export function networkKeyForRequest(request) {
+  const raw = request.headers.get('CF-Connecting-IP');
+  const ip = raw ? raw.trim() : '';
+  return ip ? networkKey(ip) : null;
+}
+
+// True for a loopback client address: 127.0.0.0/8, ::1 and the IPv4 mapped form of 127.x.x.x.
+// Anything that does not parse as an address is not loopback.
+export function isLoopbackAddress(address) {
+  let ip = String(address).trim().toLowerCase();
+  if (ip.startsWith('[') && ip.includes(']')) ip = ip.slice(1, ip.indexOf(']'));
+  // a zone id (fe80::1%eth0) never appears in an address from the edge, so it is not trusted
+  if (ip.includes('%')) return false;
+  const v4 = (text) => {
+    const m = /^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$/.exec(text);
+    return m && m.slice(1).every((p) => Number(p) <= 255) ? Number(m[1]) : null;
+  };
+  if (!ip.includes(':')) return v4(ip) === 127;
+  const g = ipv6Groups(ip);
+  if (!g) return false;
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true;
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return g[6] >> 8 === 127;
+  return false;
 }
 
 // Escapes percent, underscore and backslash for a LIKE pattern used with an ESCAPE backslash clause.

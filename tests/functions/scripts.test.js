@@ -81,6 +81,7 @@ describe('deploy check', () => {
         });
       if (path === '/api/health') return json({ ok: true, signing }, health);
       if (path === '/api/server-key') return json({ signing, keyId: signing ? keyId : null, publicKey: null });
+      if (path === '/api/channels') return json({ channels: [] });
       if (path === '/') return new Response('<html></html>', { status: 200, headers: { 'content-security-policy': "default-src 'self'; script-src 'self'" } });
       return json({ error: 'no such API route', code: 'not_found' }, 404);
     };

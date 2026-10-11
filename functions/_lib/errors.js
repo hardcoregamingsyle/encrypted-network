@@ -14,7 +14,18 @@ export const STATUS_BY_CODE = Object.freeze({
   expired: 400,
   forbidden: 403,
   server_error: 500,
-  busy: 503
+  busy: 503,
+  invalid_email: 400,
+  invalid_code: 400,
+  code_expired: 400,
+  too_many_attempts: 429,
+  mail_unavailable: 503,
+  mail_failed: 502,
+  unauthenticated: 401,
+  reauth_required: 401,
+  accounts_unavailable: 503,
+  key_exists: 409,
+  strict_mode: 409
 });
 
 export class ApiError extends Error {

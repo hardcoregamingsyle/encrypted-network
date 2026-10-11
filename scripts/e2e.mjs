@@ -1,13 +1,18 @@
 // End to end check of the API over real HTTP.
-//   node scripts/e2e.mjs http://127.0.0.1:8790
+//   node scripts/e2e.mjs http://127.0.0.1:8790 [--require-accounts]
+//
+// The account checks (sign in by email code, keys, stored passwords, Strict mode, CSRF, sessions) need a
+// LOCAL server with ACCOUNT_MASTER_KEY and MAIL_PROVIDER=echo, which `npm run setup` puts in .dev.vars.
+// Without them those checks are skipped with a SKIP line, unless --require-accounts is given.
 //
 // Uses only HTTP plus the real shared/ and src/lib/lockfile.js code, with freshly generated
 // identities and random ids, so it can run again and again against the same server.
 // Prints one line per check and exits non zero if any check failed.
+import { canonicalize } from '../shared/canonical.js';
 import { bytesToHex } from '../shared/encoding.js';
 import { sha256Hex } from '../shared/hash.js';
 import { verifyCheckpoint } from '../shared/checkpoint.js';
-import { exportPublicJwk, generateKeyPair, keyIdOf, signRecord } from '../shared/keys.js';
+import { exportPrivateJwk, exportPublicJwk, generateKeyPair, importPrivateJwk, keyIdOf, signRecord, verifyRecord } from '../shared/keys.js';
 import { LIMITS, ZERO_HASH, newDocId, newNonce, recordHash } from '../shared/records.js';
 import {
   verifyBlobBytes,
@@ -263,6 +268,641 @@ const SECURITY = {
 function assertSecurityHeaders(res, what) {
   for (const [k, v] of Object.entries(SECURITY)) eq(res.headers.get(k), v, `${what} header ${k}`);
   assert(!res.headers.get('access-control-allow-origin'), `${what} must not send CORS headers`);
+}
+
+// ---------------------------------------------------------------------------
+// accounts: sign in with email and a code over the real endpoints (local echo mode only)
+
+const ORIGIN = new URL(BASE).origin;
+const REQUIRE_ACCOUNTS = process.argv.includes('--require-accounts');
+const DAY = 24 * 60 * 60 * 1000;
+let mailCount = 0;
+
+// A random loopback address. Echo mode accepts any 127.x.y.z, and each one has its own rate limit buckets.
+function loopback() {
+  const n = () => Math.floor(Math.random() * 250) + 1;
+  return `127.${n()}.${n()}.${n()}`;
+}
+
+function newEmail(tag = 'p') {
+  mailCount++;
+  return `e2e-${tag}-${RUN}-${mailCount}-${Math.floor(Math.random() * 1e6)}@example.test`;
+}
+
+// A cookie jar for one "device".
+class Jar {
+  constructor() {
+    this.cookies = new Map();
+    this.raw = [];
+  }
+  absorb(res) {
+    const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    this.raw = list;
+    for (const c of list) {
+      const [pair, ...attrs] = c.split(';').map((s) => s.trim());
+      const eqAt = pair.indexOf('=');
+      const name = pair.slice(0, eqAt);
+      const value = pair.slice(eqAt + 1);
+      const maxAge = attrs.find((a) => /^max-age=/i.test(a));
+      if (value === '' || (maxAge && Number(maxAge.split('=')[1]) <= 0)) this.cookies.delete(name);
+      else this.cookies.set(name, value);
+    }
+  }
+  header() {
+    return [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+  clone() {
+    const j = new Jar();
+    for (const [k, v] of this.cookies) j.cookies.set(k, v);
+    return j;
+  }
+}
+
+// A call to an account endpoint. origin: undefined = the site's own origin, null = send none, string = send that.
+// ip: undefined = a fresh loopback address, null = no CF-Connecting-IP header, string = that address.
+// now: pretend time for the server (echo mode only).
+async function acall(method, path, { json, jar, origin, ip, now, headers = {}, raw } = {}) {
+  const h = { ...headers };
+  if (origin !== null && method !== 'GET' && method !== 'HEAD') h.Origin = origin || ORIGIN;
+  if (ip !== null) h['CF-Connecting-IP'] = ip === undefined ? loopback() : ip;
+  if (jar && jar.header()) h.Cookie = jar.header();
+  if (now !== undefined) h['x-hrd-test-now'] = String(now);
+  let body = raw;
+  if (json !== undefined) {
+    body = JSON.stringify(json);
+    h['Content-Type'] = 'application/json';
+  }
+  const res = await fetch(BASE + path, { method, headers: h, body, redirect: 'manual' });
+  const text = await res.text();
+  let parsed = null;
+  if ((res.headers.get('content-type') || '').includes('application/json')) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+  }
+  if (jar) jar.absorb(res);
+  return { status: res.status, headers: res.headers, json: parsed, text };
+}
+
+// Asks for a code and uses it. Returns { jar, account, isNew, email, ip }.
+async function signInAs(email = newEmail(), { jar = new Jar(), now, ip = loopback() } = {}) {
+  const req = await acall('POST', '/api/auth/request', { json: { email }, ip, now });
+  expectStatus(req, 200);
+  assert(/^[0-9]{6}$/.test(req.json.debugCode || ''), 'echo mode must return debugCode');
+  const ver = await acall('POST', '/api/auth/verify', { json: { email, code: req.json.debugCode }, jar, ip, now });
+  expectStatus(ver, 200);
+  return { jar, account: ver.json.account, isNew: ver.json.isNew, email, ip };
+}
+
+// An identity record for a new key whose private part may be sent to the server.
+async function exportableKey(name) {
+  const { publicKey, privateKey } = await generateKeyPair({ extractable: true });
+  const publicJwk = await exportPublicJwk(publicKey);
+  const keyId = await keyIdOf(publicJwk);
+  const identityRecord = { v: 2, type: 'identity', publicKey: publicJwk, displayName: name, createdAt: Date.now() };
+  const identitySignature = await signRecord(privateKey, identityRecord);
+  const privateJwk = await exportPrivateJwk(privateKey);
+  return { keyId, publicJwk, privateKey, identityRecord, identitySignature, privateJwk, name };
+}
+
+// A signer built from the key a server hands back (imported without the right to export it again).
+async function personFromServerKey(body, name = 'Account key') {
+  return { keyId: body.keyId, publicJwk: body.publicKey, privateKey: await importPrivateJwk(body.privateJwk, { extractable: false }), name };
+}
+
+async function accountChecks(ctx) {
+  const health = await call('GET', '/api/health');
+  const ready = health.json && health.json.accounts === true && health.json.mail === 'echo';
+  if (!ready) {
+    const why = `health says accounts: ${JSON.stringify(health.json && health.json.accounts)}, mail: ${JSON.stringify(health.json && health.json.mail)}`;
+    if (REQUIRE_ACCOUNTS) {
+      await check('accounts: the server runs with ACCOUNT_MASTER_KEY and MAIL_PROVIDER=echo', async () => {
+        throw new Error(why);
+      });
+    } else {
+      console.log(`SKIP accounts checks (${why}). Run against a local server with echo mail, or pass --require-accounts to make this a failure.`);
+    }
+    return;
+  }
+
+  await check('accounts: health reports mail echo and accounts on', async () => {
+    eq(health.json.mail, 'echo', 'mail');
+    eq(health.json.accounts, true, 'accounts');
+  });
+
+  await check('accounts: asking for a code validates the email (400 invalid_email)', async () => {
+    for (const email of [undefined, '', 'nobody', 'a@b', 'a b@c.de', 'caf\u00e9@example.test', 'a@b.cc\r\nBcc: x@y.zz', 'x'.repeat(300) + '@example.test']) {
+      const res = await acall('POST', '/api/auth/request', { json: { email } });
+      expectStatus(res, 400, 'invalid_email');
+    }
+    expectStatus(await acall('POST', '/api/auth/request', { raw: '{nope', headers: { 'Content-Type': 'application/json' } }), 400);
+  });
+
+  await check('accounts: the answer is the same for a known and an unknown email', async () => {
+    const known = await signInAs(newEmail('known'));
+    const a = await acall('POST', '/api/auth/request', { json: { email: known.email } });
+    const b = await acall('POST', '/api/auth/request', { json: { email: newEmail('unknown') } });
+    eq(a.status, b.status, 'status');
+    eq(JSON.stringify(Object.keys(a.json).sort()), JSON.stringify(Object.keys(b.json).sort()), 'fields');
+    eq(a.json.cooldown, 30, 'cooldown');
+  });
+
+  let primary;
+  await check('accounts: sign in creates an account and sets an HttpOnly session cookie', async () => {
+    const email = newEmail('main');
+    primary = await signInAs(email);
+    eq(primary.isNew, true, 'isNew');
+    eq(primary.account.displayName, null, 'displayName');
+    assert(/^[a-z0-9]{2}\*\*\*@example\.test$/.test(primary.account.emailMasked), 'masked: ' + primary.account.emailMasked);
+    assert(!JSON.stringify(primary.account).includes(email), 'the address must not come back');
+    const cookie = primary.jar.raw[0] || '';
+    assert(/^hrd_session=[A-Za-z0-9_-]{43};/.test(cookie), 'cookie: ' + cookie.replace(/=[A-Za-z0-9_-]{43}/, '=<token>'));
+    for (const part of ['HttpOnly', 'SameSite=Lax', 'Path=/', 'Max-Age=2592000']) assert(cookie.includes(part), 'cookie lacks ' + part);
+    assert(!/;\s*Secure/i.test(cookie), 'plain http must not set Secure');
+    const me = await acall('GET', '/api/me', { jar: primary.jar });
+    expectStatus(me, 200);
+    eq(me.json.account.id, primary.account.id, 'account id');
+    eq(JSON.stringify(me.json.keys), '[]', 'no keys yet');
+    eq(me.headers.get('cache-control'), 'no-store', 'cache-control');
+  });
+
+  await check('accounts: signing in again with the same email finds the same account', async () => {
+    const again = await signInAs(primary.email);
+    eq(again.isNew, false, 'isNew');
+    eq(again.account.id, primary.account.id, 'id');
+  });
+
+  await check('accounts: auth responses carry the security headers and no CORS headers', async () => {
+    const res = await acall('GET', '/api/me', { jar: primary.jar });
+    assertSecurityHeaders(res, 'GET /api/me');
+    const bad = await acall('GET', '/api/me');
+    expectStatus(bad, 401, 'unauthenticated');
+    assertSecurityHeaders(bad, '401 /api/me');
+    const post = await acall('POST', '/api/auth/request', { json: { email: newEmail() } });
+    assertSecurityHeaders(post, 'POST /api/auth/request');
+  });
+
+  await check('accounts: a wrong code is 400 invalid_code, five wrong tries kill the code (429), even the right one', async () => {
+    const email = newEmail('wrong');
+    const ip = loopback();
+    const req = await acall('POST', '/api/auth/request', { json: { email }, ip });
+    const bad = req.json.debugCode === '000000' ? '000001' : '000000';
+    const seen = [];
+    for (let i = 0; i < 6; i++) {
+      const res = await acall('POST', '/api/auth/verify', { json: { email, code: bad }, ip });
+      seen.push(res.status + ':' + res.json.code);
+    }
+    eq(seen.join(','), '400:invalid_code,400:invalid_code,400:invalid_code,400:invalid_code,429:too_many_attempts,429:too_many_attempts', 'tries');
+    const right = await acall('POST', '/api/auth/verify', { json: { email, code: req.json.debugCode }, ip });
+    expectStatus(right, 429, 'too_many_attempts');
+  });
+
+  await check('accounts: a code is used once; a malformed code is 400 and not counted', async () => {
+    const email = newEmail('once');
+    const ip = loopback();
+    const req = await acall('POST', '/api/auth/request', { json: { email }, ip });
+    for (const code of [undefined, 123456, '12345', 'abcdef', '']) {
+      expectStatus(await acall('POST', '/api/auth/verify', { json: { email, code }, ip }), 400, 'invalid_code');
+    }
+    expectStatus(await acall('POST', '/api/auth/verify', { json: { email, code: req.json.debugCode }, ip }), 200);
+    expectStatus(await acall('POST', '/api/auth/verify', { json: { email, code: req.json.debugCode }, ip }), 400, 'code_expired');
+  });
+
+  await check('accounts: a code that ran out (10 minutes, test clock) is 400 code_expired', async () => {
+    const email = newEmail('expired');
+    const ip = loopback();
+    const req = await acall('POST', '/api/auth/request', { json: { email }, ip, now: Date.now() - 11 * 60 * 1000 });
+    expectStatus(req, 200);
+    expectStatus(await acall('POST', '/api/auth/verify', { json: { email, code: req.json.debugCode }, ip }), 400, 'code_expired');
+  });
+
+  await check('accounts: a new code needs 30 seconds after the last (429 with Retry-After)', async () => {
+    const email = newEmail('cool');
+    expectStatus(await acall('POST', '/api/auth/request', { json: { email } }), 200);
+    const second = await acall('POST', '/api/auth/request', { json: { email } });
+    expectStatus(second, 429, 'rate_limited');
+    const wait = Number(second.headers.get('retry-after'));
+    assert(wait >= 1 && wait <= 30, 'Retry-After: ' + second.headers.get('retry-after'));
+    // after the cooldown (test clock) a new code replaces the old one
+    const t = Date.now() + 31 * 1000;
+    const third = await acall('POST', '/api/auth/request', { json: { email }, now: t });
+    expectStatus(third, 200);
+    expectStatus(await acall('POST', '/api/auth/verify', { json: { email, code: third.json.debugCode }, now: t + 1000 }), 200);
+  });
+
+  await check('accounts: 5 codes an hour per email, then 429', async () => {
+    const email = newEmail('hourly');
+    const t0 = Date.now() - 20 * DAY;
+    const seen = [];
+    for (let i = 0; i < 6; i++) seen.push((await acall('POST', '/api/auth/request', { json: { email }, now: t0 + i * 31000 })).status);
+    eq(seen.join(','), '200,200,200,200,200,429', 'statuses');
+  });
+
+  await check('accounts: 20 codes an hour per address, then 429', async () => {
+    const ip = loopback();
+    const t0 = Date.now() - 21 * DAY;
+    const seen = [];
+    for (let i = 0; i < 22; i++) seen.push((await acall('POST', '/api/auth/request', { json: { email: newEmail('ip') }, ip, now: t0 })).status);
+    eq(seen.filter((s) => s === 200).length, 20, 'accepted: ' + seen.join());
+    eq(seen[20] + ',' + seen[21], '429,429', 'the rest');
+  });
+
+  await check('accounts: 10 code checks per 10 minutes per address, then 429', async () => {
+    const ip = loopback();
+    const t0 = Date.now() - 22 * DAY;
+    const seen = [];
+    for (let i = 0; i < 12; i++) {
+      const res = await acall('POST', '/api/auth/verify', { json: { email: newEmail('v'), code: '123456' }, ip, now: t0 });
+      seen.push(res.json.code);
+    }
+    eq(seen.slice(0, 10).every((c) => c === 'code_expired'), true, 'first ten: ' + seen.join());
+    eq(seen.slice(10).join(), 'rate_limited,rate_limited', 'last two');
+  });
+
+  await check('accounts: a session older than 30 days is not valid (test clock), the stale cookie is cleared', async () => {
+    const old = await signInAs(newEmail('old'), { now: Date.now() - 31 * DAY });
+    const res = await acall('GET', '/api/me', { jar: old.jar });
+    expectStatus(res, 401, 'unauthenticated');
+    assert(/Max-Age=0/.test(res.headers.get('set-cookie') || ''), 'the stale cookie should be cleared');
+    expectStatus(await acall('GET', '/api/me', { jar: old.jar }), 401, 'unauthenticated');
+  });
+
+  await check('accounts: junk cookies are 401 and never a server error', async () => {
+    for (const v of ['x', 'A'.repeat(43), 'A'.repeat(44), '%00', '../../x', 'A'.repeat(5000)]) {
+      const res = await acall('GET', '/api/me', { headers: { Cookie: 'hrd_session=' + v } });
+      eq(res.status, 401, 'cookie ' + v.slice(0, 20));
+    }
+    expectStatus(await acall('GET', '/api/me', { headers: { Cookie: '__Host-hrd_session=' + 'A'.repeat(43) } }), 401);
+  });
+
+  // ---- keys: with and without a server copy ----
+  const named = await exportableKey('Easy Person ' + RUN);
+  await check('accounts: POST /api/me/key with a cloud copy registers and links the key (201)', async () => {
+    const res = await acall('POST', '/api/me/key', { jar: primary.jar, json: { record: named.identityRecord, signature: named.identitySignature, privateJwk: named.privateJwk } });
+    expectStatus(res, 201);
+    eq(res.json.keyId, named.keyId, 'keyId');
+    assert(!res.text.includes(named.privateJwk.d), 'the private key must not come back here');
+    const me = await acall('GET', '/api/me', { jar: primary.jar });
+    eq(me.json.account.displayName, named.name, 'display name set from the key');
+    eq(JSON.stringify(me.json.keys), JSON.stringify([{ keyId: named.keyId, hasCloudCopy: true }]), 'keys');
+    // the identity is public through the open endpoint
+    const pub = await call('GET', '/api/identities/' + named.keyId);
+    expectStatus(pub, 200);
+    eq(pub.json.displayName, named.name, 'public name');
+  });
+
+  await check('accounts: the same key again is a quiet 200, a second key is 409 key_exists', async () => {
+    const again = await acall('POST', '/api/me/key', { jar: primary.jar, json: { record: named.identityRecord, signature: named.identitySignature, privateJwk: named.privateJwk } });
+    expectStatus(again, 200);
+    const other = await exportableKey('Second ' + RUN);
+    for (const withCopy of [true, false]) {
+      const res = await acall('POST', '/api/me/key', {
+        jar: primary.jar,
+        json: { record: other.identityRecord, signature: other.identitySignature, ...(withCopy ? { privateJwk: other.privateJwk } : {}) }
+      });
+      expectStatus(res, 409, 'key_exists');
+    }
+  });
+
+  await check('accounts: a private key that does not belong to the public key is refused (400) and never echoed', async () => {
+    const acct = await signInAs(newEmail('mismatch'));
+    const k = await exportableKey('Mismatch ' + RUN);
+    const other = await exportableKey('Other ' + RUN);
+    const res = await acall('POST', '/api/me/key', { jar: acct.jar, json: { record: k.identityRecord, signature: k.identitySignature, privateJwk: { ...k.privateJwk, d: other.privateJwk.d } } });
+    expectStatus(res, 400, 'bad_request');
+    assert(!res.text.includes(other.privateJwk.d) && !res.text.includes(k.privateJwk.d), 'a private key leaked into an error');
+    eq((await call('GET', '/api/identities/' + k.keyId)).status, 404, 'the identity must not be registered');
+  });
+
+  let second;
+  await check('accounts: a second device (fresh cookie jar) signs in and gets the key back, which signs correctly', async () => {
+    second = await signInAs(primary.email);
+    eq(second.isNew, false, 'isNew');
+    eq(second.account.displayName, named.name, 'name on the second device');
+    const res = await acall('GET', '/api/me/key', { jar: second.jar });
+    expectStatus(res, 200);
+    eq(res.headers.get('cache-control'), 'no-store', 'cache-control');
+    eq(res.json.keyId, named.keyId, 'keyId');
+    eq(canonicalize(res.json.record), canonicalize(named.identityRecord), 'record');
+    eq(res.json.signature, named.identitySignature, 'signature');
+    eq(res.json.privateJwk.d, named.privateJwk.d, 'private key');
+    const person = await personFromServerKey(res.json, named.name);
+    const probe = { v: 2, type: 'message', note: 'probe' };
+    assert(await verifyRecordFor(person, probe), 'the key from the server does not sign correctly');
+    ctx.accountPerson = person;
+  });
+
+  async function verifyRecordFor(person, record) {
+    return verifyRecord(person.publicJwk, record, await signRecord(person.privateKey, record));
+  }
+
+  let channelId;
+  await check('accounts: the key from the server can post to a chat and the room shows the preview', async () => {
+    channelId = 'e2e-acct-' + RUN;
+    expectStatus(await createChannel(ctx.accountPerson, channelId, 'Account room ' + RUN), 201);
+    const { res } = await postMessage(ctx.accountPerson, channelId, 'hello from the account\nsecond line   with  blanks');
+    expectStatus(res, 201);
+    const list = await call('GET', '/api/channels?limit=200');
+    const row = list.json.channels.find((c) => c.channelId === channelId);
+    assert(row, 'channel in the list');
+    eq(row.lastText, 'hello from the account second line with blanks', 'lastText');
+    eq(row.lastSignerName, named.name, 'lastSignerName');
+    const long = await postMessage(ctx.accountPerson, channelId, 'z'.repeat(400));
+    expectStatus(long.res, 201);
+    const after = (await call('GET', '/api/channels?limit=200')).json.channels.find((c) => c.channelId === channelId);
+    eq(after.lastText, 'z'.repeat(140), 'lastText is cut at 140');
+    eq(after.messageCount, 2, 'messageCount');
+  });
+
+  await check('accounts: without a cloud copy the key is registered but not stored (404 on GET /api/me/key)', async () => {
+    const acct = await signInAs(newEmail('nocopy'));
+    const k = await exportableKey('No Copy ' + RUN);
+    expectStatus(await acall('POST', '/api/me/key', { jar: acct.jar, json: { record: k.identityRecord, signature: k.identitySignature } }), 201);
+    const me = await acall('GET', '/api/me', { jar: acct.jar });
+    eq(JSON.stringify(me.json.keys), JSON.stringify([{ keyId: k.keyId, hasCloudCopy: false }]), 'keys');
+    expectStatus(await acall('GET', '/api/me/key', { jar: acct.jar }), 404, 'not_found');
+  });
+
+  await check('accounts: guests still register with POST /api/identities (no cookie, no Origin) and can post', async () => {
+    const guest = await newPerson('Guest');
+    const { res } = await postMessage(guest, channelId, 'a guest speaks');
+    expectStatus(res, 201);
+    const withCookie = await makeIdentity('Guest cookie ' + RUN);
+    const reg = await fetch(BASE + '/api/identities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': nextIp(), Cookie: primary.jar.header() },
+      body: JSON.stringify({ record: withCookie.identityRecord, signature: withCookie.identitySignature })
+    });
+    eq(reg.status, 201, 'the open endpoint ignores cookies');
+    const me = await acall('GET', '/api/me', { jar: primary.jar });
+    eq(me.json.keys.length, 1, 'the guest key is not linked to the account');
+  });
+
+  // ---- documents, stored passwords, My files ----
+  let mine;
+  let hidden;
+  await check('accounts: documents published with the account key show up in GET /api/me/documents (listed and unlisted)', async () => {
+    mine = await publishNew(ctx.accountPerson, 'account file ' + RUN, { label: 'Account file ' + RUN, listed: true });
+    hidden = await publishNew(ctx.accountPerson, 'hidden file ' + RUN, { label: 'Hidden file ' + RUN, listed: false });
+    const other = await newPerson('Other publisher');
+    const foreign = await publishNew(other, 'foreign ' + RUN, { label: 'Foreign ' + RUN });
+    const res = await acall('GET', '/api/me/documents', { jar: second.jar });
+    expectStatus(res, 200);
+    const ids = res.json.documents.map((d) => d.docId);
+    assert(ids.includes(mine.docId) && ids.includes(hidden.docId), 'both documents are listed for the owner');
+    assert(!ids.includes(foreign.docId), 'a foreign document must not be listed');
+    const hiddenRow = res.json.documents.find((d) => d.docId === hidden.docId);
+    eq(hiddenRow.listed, false, 'listed flag');
+    eq(hiddenRow.ownerKeyId, named.keyId, 'owner');
+    eq(hiddenRow.headVersion, 1, 'headVersion');
+    const pub = await call('GET', '/api/documents?owner=' + named.keyId);
+    assert(!pub.json.documents.some((d) => d.docId === hidden.docId), 'the public list must not show the unlisted one');
+    for (let i = 1; i < res.json.documents.length; i++) {
+      assert(res.json.documents[i - 1].updatedAt >= res.json.documents[i].updatedAt, 'newest update first');
+    }
+    expectStatus(await acall('GET', '/api/me/documents?limit=0', { jar: second.jar }), 400);
+    expectStatus(await acall('GET', '/api/me/documents'), 401);
+  });
+
+  await check('accounts: document passwords are stored for the owner and read back on another device', async () => {
+    const put = await acall('PUT', `/api/me/secrets/${mine.docId}`, { jar: primary.jar, json: { password: mine.password } });
+    expectStatus(put, 200);
+    const third = await signInAs(primary.email);
+    const got = await acall('GET', `/api/me/secrets/${mine.docId}`, { jar: third.jar });
+    expectStatus(got, 200);
+    eq(got.json.password, mine.password, 'password');
+    eq(got.headers.get('cache-control'), 'no-store', 'cache-control');
+    // the stored password opens the stored file
+    const blob = await call('GET', '/api/blobs/' + mine.locked.blobHash);
+    const opened = await unlockFile(blob.bytes, got.json.password);
+    eq(new TextDecoder().decode(opened.data), 'account file ' + RUN, 'file content');
+    expectStatus(await acall('GET', `/api/me/secrets/${hidden.docId}`, { jar: third.jar }), 404, 'not_found');
+  });
+
+  await check('accounts: passwords can only be stored for documents the account owns, and must look like passwords', async () => {
+    const stranger = await newPerson('Stranger docs');
+    const foreign = await publishNew(stranger, 'not yours ' + RUN);
+    expectStatus(await acall('PUT', `/api/me/secrets/${foreign.docId}`, { jar: primary.jar, json: { password: 'ABCD-EFGH-JKLM-NPQR-STUV' } }), 403, 'not_owner');
+    expectStatus(await acall('PUT', `/api/me/secrets/${newDocId()}`, { jar: primary.jar, json: { password: 'ABCD' } }), 404, 'not_found');
+    expectStatus(await acall('PUT', '/api/me/secrets/not-an-id', { jar: primary.jar, json: { password: 'ABCD' } }), 400);
+    for (const password of [undefined, '', 'x'.repeat(129), 'caf\u00e9', 'two\nlines']) {
+      expectStatus(await acall('PUT', `/api/me/secrets/${mine.docId}`, { jar: primary.jar, json: { password } }), 400);
+    }
+    expectStatus(await acall('GET', `/api/me/secrets/${foreign.docId}`, { jar: primary.jar }), 404);
+    // someone else's account can not read this account's password
+    const other = await signInAs(newEmail('snoop'));
+    expectStatus(await acall('GET', `/api/me/secrets/${mine.docId}`, { jar: other.jar }), 404);
+    expectStatus(await acall('GET', `/api/me/secrets/${mine.docId}`), 401);
+  });
+
+  // ---- strict mode ----
+  await check('accounts: strict mode hands the stored passwords over until the client confirms, drops the key copy and blocks new ones', async () => {
+    const on = await acall('POST', '/api/me/strict', { jar: primary.jar, json: { enabled: true } });
+    expectStatus(on, 200);
+    eq(on.json.strict, true, 'strict');
+    eq(JSON.stringify(on.json.passwords), JSON.stringify([{ docId: mine.docId, password: mine.password }]), 'passwords');
+    const me = await acall('GET', '/api/me', { jar: primary.jar });
+    eq(me.json.account.strict, true, 'account.strict');
+    eq(me.json.keys[0].hasCloudCopy, false, 'the copy is gone');
+    expectStatus(await acall('GET', '/api/me/key', { jar: primary.jar }), 409, 'strict_mode');
+    expectStatus(await acall('GET', `/api/me/secrets/${mine.docId}`, { jar: primary.jar }), 404, 'not_found');
+    expectStatus(await acall('PUT', `/api/me/secrets/${mine.docId}`, { jar: primary.jar, json: { password: mine.password } }), 409, 'strict_mode');
+    eq(on.json.next, null, 'one page is all there is');
+    // an answer that got lost costs nothing: asking again hands the same passwords over
+    const again = await acall('POST', '/api/me/strict', { jar: primary.jar, json: { enabled: true } });
+    eq(JSON.stringify(again.json.passwords), JSON.stringify(on.json.passwords), 'asked again');
+    // the client confirms what it stored, only that is deleted
+    const done = await acall('POST', '/api/me/strict', { jar: primary.jar, json: { enabled: true, confirmThrough: mine.docId } });
+    expectStatus(done, 200);
+    eq(done.json.remaining, 0, 'remaining');
+    const gone = await acall('POST', '/api/me/strict', { jar: primary.jar, json: { enabled: true } });
+    eq(JSON.stringify(gone.json.passwords), '[]', 'nothing left to return');
+    // the account still sees its files, and the key it already published with
+    const docs = await acall('GET', '/api/me/documents', { jar: primary.jar });
+    assert(docs.json.documents.some((d) => d.docId === mine.docId), 'My files still lists the document');
+  });
+
+  await check('accounts: a strict account registers keys without a copy (up to 5) and refuses a private key', async () => {
+    const withCopy = await exportableKey('Strict copy ' + RUN);
+    const refused = await acall('POST', '/api/me/key', { jar: primary.jar, json: { record: withCopy.identityRecord, signature: withCopy.identitySignature, privateJwk: withCopy.privateJwk } });
+    expectStatus(refused, 409, 'strict_mode');
+    assert(!refused.text.includes(withCopy.privateJwk.d), 'the private key must not be echoed');
+    let accepted = 0;
+    for (let i = 0; i < 5; i++) {
+      const k = await exportableKey(`Strict device ${i} ${RUN}`);
+      const res = await acall('POST', '/api/me/key', { jar: primary.jar, json: { record: k.identityRecord, signature: k.identitySignature } });
+      if (res.status === 201) accepted++;
+      else expectStatus(res, 409);
+    }
+    eq(accepted, 4, 'one key existed, so 4 more fit under the limit of 5');
+    const me = await acall('GET', '/api/me', { jar: primary.jar });
+    eq(me.json.keys.length, 5, 'five keys');
+  });
+
+  await check('accounts: turning strict off only flips the flag; a new key with a copy can be registered', async () => {
+    const off = await acall('POST', '/api/me/strict', { jar: primary.jar, json: { enabled: false } });
+    expectStatus(off, 200);
+    eq(off.json.strict, false, 'strict');
+    const fresh = await signInAs(newEmail('flip'));
+    expectStatus(await acall('POST', '/api/me/strict', { jar: fresh.jar, json: { enabled: true } }), 200);
+    expectStatus(await acall('POST', '/api/me/strict', { jar: fresh.jar, json: { enabled: false } }), 200);
+    const k = await exportableKey('After flip ' + RUN);
+    expectStatus(await acall('POST', '/api/me/key', { jar: fresh.jar, json: { record: k.identityRecord, signature: k.identitySignature, privateJwk: k.privateJwk } }), 201);
+    const got = await acall('GET', '/api/me/key', { jar: fresh.jar });
+    expectStatus(got, 200);
+    eq(got.json.keyId, k.keyId, 'keyId');
+    for (const body of [{}, { enabled: 'yes' }, { enabled: 1 }]) expectStatus(await acall('POST', '/api/me/strict', { jar: fresh.jar, json: body }), 400);
+  });
+
+  // ---- CSRF ----
+  await check('accounts: a cookie authenticated write without the site\'s own Origin is 403 forbidden', async () => {
+    const acct = await signInAs(newEmail('csrf'));
+    const docId = newDocId();
+    const cases = [
+      ['POST', '/api/me/key', { record: {}, signature: 'x' }],
+      ['POST', '/api/me/strict', { enabled: true }],
+      ['PUT', `/api/me/secrets/${docId}`, { password: 'ABCD' }],
+      ['DELETE', '/api/me', undefined],
+      ['POST', '/api/auth/logout', {}]
+    ];
+    for (const [method, path, json] of cases) {
+      // (wrangler's local proxy rewrites an https Origin for its own host to http, so that variant is only in the unit tests)
+      for (const origin of [null, 'https://evil.example', 'null', ORIGIN + '.evil.example']) {
+        const res = await acall(method, path, { jar: acct.jar, json, origin });
+        eq(res.status, 403, `${method} ${path} origin ${origin}`);
+        eq(res.json && res.json.code, 'forbidden', 'code');
+      }
+    }
+    // the session is untouched by all of that
+    expectStatus(await acall('GET', '/api/me', { jar: acct.jar }), 200);
+    // sign in and code requests need the Origin as well
+    expectStatus(await acall('POST', '/api/auth/request', { json: { email: newEmail() }, origin: 'https://evil.example' }), 403, 'forbidden');
+    expectStatus(await acall('POST', '/api/auth/verify', { json: { email: newEmail(), code: '123456' }, origin: null }), 403, 'forbidden');
+    // reads need none
+    expectStatus(await acall('GET', '/api/me/documents', { jar: acct.jar, origin: 'https://evil.example' }), 200);
+  });
+
+  await check('accounts: the echo mode is refused when the request is not from this machine', async () => {
+    const email = newEmail('guard');
+    const viaEdge = await acall('POST', '/api/auth/request', { json: { email }, ip: '203.0.113.77' });
+    expectStatus(viaEdge, 503, 'mail_unavailable');
+    assert(!viaEdge.text.includes('debugCode'), 'no code outside loopback');
+    const withRay = await acall('POST', '/api/auth/request', { json: { email }, headers: { 'cf-ray': '8f1c2d3e4f5a6b7c-FRA' } });
+    expectStatus(withRay, 503, 'mail_unavailable');
+    const v6 = await acall('POST', '/api/auth/request', { json: { email }, ip: '2001:db8::5' });
+    expectStatus(v6, 503, 'mail_unavailable');
+    // and the test clock is ignored on such a request, so it can not be used to age a code
+    const real = await acall('POST', '/api/auth/request', { json: { email: newEmail('guard2') } });
+    expectStatus(real, 200);
+    const health2 = await acall('GET', '/api/health', { ip: '203.0.113.77' });
+    eq(health2.json.mail, 'none', 'health mail seen from outside');
+    eq(health2.json.mailConfigured, 'echo', 'health mailConfigured');
+  });
+
+  // ---- logout and delete ----
+  await check('accounts: logout ends the session and clears the cookie; the old cookie stops working', async () => {
+    const acct = await signInAs(newEmail('logout'));
+    const old = acct.jar.clone();
+    const out = await acall('POST', '/api/auth/logout', { jar: acct.jar });
+    expectStatus(out, 200);
+    eq(out.json.ok, true, 'ok');
+    assert(/Max-Age=0/.test(out.headers.get('set-cookie') || ''), 'cookie cleared');
+    eq(acct.jar.header(), '', 'jar emptied');
+    expectStatus(await acall('GET', '/api/me', { jar: old }), 401, 'unauthenticated');
+    expectStatus(await acall('POST', '/api/auth/logout', { jar: new Jar() }), 200);
+  });
+
+  await check('accounts: logout only ends its own session', async () => {
+    const email = newEmail('twice');
+    const a = await signInAs(email);
+    const b = await signInAs(email);
+    expectStatus(await acall('POST', '/api/auth/logout', { jar: a.jar }), 200);
+    expectStatus(await acall('GET', '/api/me', { jar: b.jar }), 200);
+  });
+
+  await check('accounts: logout with all:true ends every session of the account; the sessions list shows them and ends one', async () => {
+    const email = newEmail('everywhere');
+    const a = await signInAs(email);
+    const b = await signInAs(email);
+    const c = await signInAs(email);
+    const list = await acall('GET', '/api/me/sessions', { jar: a.jar });
+    expectStatus(list, 200);
+    eq(list.json.sessions.length, 3, 'sessions');
+    eq(list.json.sessions.filter((x) => x.current).length, 1, 'current');
+    const other = list.json.sessions.find((x) => !x.current);
+    expectStatus(await acall('DELETE', '/api/me/sessions/' + other.id, { jar: a.jar }), 200);
+    eq((await acall('GET', '/api/me/sessions', { jar: a.jar })).json.sessions.length, 2, 'after ending one');
+    const out = await acall('POST', '/api/auth/logout', { jar: a.jar, json: { all: true } });
+    expectStatus(out, 200);
+    eq(out.json.ended, 2, 'ended');
+    for (const jar of [a.jar, b.jar, c.jar]) expectStatus(await acall('GET', '/api/me', { jar: jar.clone() }), 401, 'unauthenticated');
+  });
+
+  await check('accounts: a session ends 90 days after it was made even when it is used every day', async () => {
+    const t = Date.now();
+    const s = await signInAs(newEmail('forever'), { now: t });
+    let alive = 0;
+    for (let day = 1; day <= 120; day++) {
+      const res = await acall('GET', '/api/me', { jar: s.jar, now: t + day * DAY });
+      if (res.status !== 200) break;
+      alive = day;
+    }
+    assert(alive >= 89 && alive <= 90, 'alive for ' + alive + ' days');
+  });
+
+  await check('accounts: the stored key, Strict and deleting the account need a session made in the last 15 minutes (401 reauth_required)', async () => {
+    const t = Date.now();
+    const s = await signInAs(newEmail('stepup'), { now: t });
+    const k = await exportableKey('Step ' + RUN);
+    expectStatus(await acall('POST', '/api/me/key', { jar: s.jar, now: t, json: { record: k.identityRecord, signature: k.identitySignature, privateJwk: k.privateJwk } }), 201);
+    const later = t + 20 * DAY;
+    const key = await acall('GET', '/api/me/key', { jar: s.jar, now: later });
+    expectStatus(key, 401, 'reauth_required');
+    assert(!key.text.includes(k.privateJwk.d), 'the key must not come back');
+    expectStatus(await acall('POST', '/api/me/strict', { jar: s.jar, now: later, json: { enabled: true } }), 401, 'reauth_required');
+    expectStatus(await acall('DELETE', '/api/me', { jar: s.jar, now: later }), 401, 'reauth_required');
+    // a fresh code with the old cookie replaces the old session, and then all three work
+    const asked = await acall('POST', '/api/auth/request', { json: { email: s.email }, now: later });
+    expectStatus(asked, 200);
+    expectStatus(await acall('POST', '/api/auth/verify', { jar: s.jar, now: later + 1000, json: { email: s.email, code: asked.json.debugCode } }), 200);
+    expectStatus(await acall('GET', '/api/me/key', { jar: s.jar, now: later + 2000 }), 200);
+  });
+
+  await check('accounts: deleting the account removes it, ends every session and keeps the public history', async () => {
+    const email = newEmail('delete');
+    const a = await signInAs(email);
+    const b = await signInAs(email);
+    const k = await exportableKey('Leaver ' + RUN);
+    expectStatus(await acall('POST', '/api/me/key', { jar: a.jar, json: { record: k.identityRecord, signature: k.identitySignature, privateJwk: k.privateJwk } }), 201);
+    const person = await personFromServerKey((await acall('GET', '/api/me/key', { jar: b.jar })).json);
+    const doc = await publishNew(person, 'leaver file ' + RUN, { label: 'Leaver ' + RUN });
+    expectStatus(await acall('PUT', `/api/me/secrets/${doc.docId}`, { jar: a.jar, json: { password: doc.password } }), 200);
+    const del = await acall('DELETE', '/api/me', { jar: a.jar });
+    expectStatus(del, 200);
+    eq(del.json.ok, true, 'ok');
+    expectStatus(await acall('GET', '/api/me', { jar: a.jar }), 401);
+    expectStatus(await acall('GET', '/api/me', { jar: b.jar }), 401, 'unauthenticated');
+    // the signed history stays
+    expectStatus(await call('GET', '/api/identities/' + k.keyId), 200);
+    const bundle = await call('GET', '/api/documents/' + doc.docId);
+    expectStatus(bundle, 200);
+    // signing in again makes a new, empty account
+    const again = await signInAs(email);
+    eq(again.isNew, true, 'isNew');
+    assert(again.account.id !== a.account.id, 'new id');
+    expectStatus(await acall('GET', `/api/me/secrets/${doc.docId}`, { jar: again.jar }), 404);
+    eq(JSON.stringify((await acall('GET', '/api/me/documents', { jar: again.jar })).json.documents), '[]', 'no files');
+  });
+
+  await check('accounts: wrong methods and unknown account routes answer in JSON', async () => {
+    expectStatus(await acall('GET', '/api/auth/request'), 405);
+    expectStatus(await acall('PUT', '/api/me', { jar: primary.jar }), 405);
+    expectStatus(await acall('GET', '/api/me/strict', { jar: primary.jar }), 405);
+    expectStatus(await acall('GET', '/api/me/nothing', { jar: primary.jar }), 404, 'not_found');
+    expectStatus(await acall('POST', '/api/auth/request', { raw: 'x'.repeat(70000), headers: { 'Content-Type': 'application/json' } }), 413, 'too_large');
+  });
 }
 
 async function main() {
@@ -1196,6 +1836,8 @@ async function main() {
     eq(codes.filter((c) => c === 201).length, 10, 'accepted: ' + codes.join());
     eq(codes[10], 429, 'eleventh');
   });
+
+  await accountChecks(ctx);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

@@ -25,6 +25,20 @@ export function docSummary(row) {
   };
 }
 
+// One row of a document list (public list and the account list).
+export function docListRow(r) {
+  return {
+    docId: r.doc_id,
+    label: r.label,
+    ownerKeyId: r.owner_key_id,
+    ownerName: r.owner_name || '',
+    status: r.status,
+    headVersion: r.head_version,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at
+  };
+}
+
 // Current end of the ledger: { seq, hash }, seq 0 and the zero hash when empty.
 export function ledgerHeadFromRow(row) {
   return row ? { seq: row.seq, hash: row.ledger_hash } : { seq: 0, hash: ZERO_HASH };

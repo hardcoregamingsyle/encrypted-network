@@ -5,6 +5,23 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { sha256Hex } from '../../shared/hash.js';
+import { exportPrivateJwk, exportPublicJwk, generateKeyPair, keyIdOf, signRecord } from '../../shared/keys.js';
+import { onRequest as middleware } from '../../functions/_middleware.js';
+import * as authRequestRoute from '../../functions/api/auth/request.js';
+import * as authVerifyRoute from '../../functions/api/auth/verify.js';
+import * as authLogoutRoute from '../../functions/api/auth/logout.js';
+import * as meRoute from '../../functions/api/me/index.js';
+import * as meKeyRoute from '../../functions/api/me/key.js';
+import * as meDocsRoute from '../../functions/api/me/documents.js';
+import * as meStrictRoute from '../../functions/api/me/strict.js';
+import * as meSecretsRoute from '../../functions/api/me/secrets/[docId].js';
+import * as meSessionsRoute from '../../functions/api/me/sessions/index.js';
+import * as meSessionRoute from '../../functions/api/me/sessions/[id].js';
+import * as identitiesRoute from '../../functions/api/identities/index.js';
+import * as healthRoute from '../../functions/api/health.js';
+import * as channelsRoute from '../../functions/api/channels/index.js';
+import * as messagesRoute from '../../functions/api/channels/[channelId]/messages.js';
+import * as docListRoute from '../../functions/api/documents/index.js';
 
 const MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'migrations');
 
@@ -158,4 +175,172 @@ export function lockedBytes(n = 300, { iterations = 600000, suite = 1, magic = '
     new DataView(b.buffer).setUint32(9, iterations, false);
   }
   return b;
+}
+
+// ---------------------------------------------------------------------------
+// Accounts: an environment with the account secrets, a router that runs a request through the real
+// middleware and route modules, a cookie jar, and small row helpers.
+
+// base64 of 32 random bytes, the shape of ACCOUNT_MASTER_KEY.
+export function masterKeyText() {
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  let bin = '';
+  for (const x of b) bin += String.fromCharCode(x);
+  return btoa(bin);
+}
+
+// A full environment: D1 on sqlite (all migrations), file store, master key, echo mail.
+// opts.env overrides or removes (undefined) variables, opts.upTo limits the migrations.
+export function accountEnv(opts = {}) {
+  const db = newDatabase(opts.upTo || null);
+  const env = { DB: fakeD1(db, opts.hooks), FILES: fakeR2(), ACCOUNT_MASTER_KEY: masterKeyText(), MAIL_PROVIDER: 'echo' };
+  for (const [k, v] of Object.entries(opts.env || {})) {
+    if (v === undefined) delete env[k];
+    else env[k] = v;
+  }
+  return { db, env };
+}
+
+const ROUTES = [
+  [/^\/api\/auth\/request$/, authRequestRoute, []],
+  [/^\/api\/auth\/verify$/, authVerifyRoute, []],
+  [/^\/api\/auth\/logout$/, authLogoutRoute, []],
+  [/^\/api\/me$/, meRoute, []],
+  [/^\/api\/me\/key$/, meKeyRoute, []],
+  [/^\/api\/me\/documents$/, meDocsRoute, []],
+  [/^\/api\/me\/strict$/, meStrictRoute, []],
+  [/^\/api\/me\/secrets\/([^/]+)$/, meSecretsRoute, ['docId']],
+  [/^\/api\/me\/sessions$/, meSessionsRoute, []],
+  [/^\/api\/me\/sessions\/([^/]+)$/, meSessionRoute, ['id']],
+  [/^\/api\/identities$/, identitiesRoute, []],
+  [/^\/api\/health$/, healthRoute, []],
+  [/^\/api\/channels$/, channelsRoute, []],
+  [/^\/api\/channels\/([^/]+)\/messages$/, messagesRoute, ['channelId']],
+  [/^\/api\/documents$/, docListRoute, []]
+];
+
+// Cookie jar: remembers the cookies a response sets (name -> value) and sends them back.
+export class Jar {
+  constructor() {
+    this.cookies = new Map();
+    this.last = [];
+  }
+  absorb(response) {
+    const list = typeof response.headers.getSetCookie === 'function' ? response.headers.getSetCookie() : [];
+    this.last = list;
+    for (const c of list) {
+      const [pair, ...attrs] = c.split(';').map((s) => s.trim());
+      const eq = pair.indexOf('=');
+      const name = pair.slice(0, eq);
+      const value = pair.slice(eq + 1);
+      const maxAge = attrs.find((a) => /^max-age=/i.test(a));
+      if (value === '' || (maxAge && Number(maxAge.split('=')[1]) <= 0)) this.cookies.delete(name);
+      else this.cookies.set(name, value);
+    }
+  }
+  header() {
+    return [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+  get(name) {
+    return this.cookies.get(name);
+  }
+}
+
+// Runs one request through the middleware and the matching route like Cloudflare Pages does.
+// o: base, ip, jar, json, body, headers, origin (a string, or null to send none).
+// Returns { status, headers, json, text, res }.
+export async function callApi(env, method, path, o = {}) {
+  const base = o.base || 'http://localhost';
+  const url = new URL(path, base);
+  const headers = new Headers(o.headers || {});
+  if (o.origin !== null && !headers.has('Origin') && method !== 'GET' && method !== 'HEAD') headers.set('Origin', o.origin || url.origin);
+  if (o.ip) headers.set('CF-Connecting-IP', o.ip);
+  if (o.jar && o.jar.header()) headers.set('Cookie', o.jar.header());
+  let body;
+  if (o.json !== undefined) {
+    body = JSON.stringify(o.json);
+    headers.set('Content-Type', 'application/json');
+  } else if (o.body !== undefined) {
+    body = o.body;
+  }
+  const request = new Request(url, { method, headers, body });
+  let handler = null;
+  const params = {};
+  for (const [re, mod, names] of ROUTES) {
+    const m = re.exec(url.pathname);
+    if (!m) continue;
+    names.forEach((n, i) => (params[n] = decodeURIComponent(m[i + 1])));
+    handler = mod['onRequest' + method[0] + method.slice(1).toLowerCase()] || mod.onRequest;
+    break;
+  }
+  const context = {
+    request,
+    env,
+    params,
+    next: async () => {
+      if (!handler) throw new Error('no route for ' + path);
+      return handler({ request, env, params });
+    }
+  };
+  const res = await middleware(context);
+  if (o.jar) o.jar.absorb(res);
+  const text = await res.text();
+  let parsed = null;
+  if ((res.headers.get('content-type') || '').includes('json')) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = null;
+    }
+  }
+  return { status: res.status, headers: res.headers, json: parsed, text, res };
+}
+
+// A random loopback client address (127.0.0.0/8), so rate limits per address do not collide.
+export function loopbackIp() {
+  const n = () => Math.floor(Math.random() * 250) + 1;
+  return `127.${n()}.${n()}.${n()}`;
+}
+
+// Signs in through the real endpoints (echo mail). Returns { jar, account, isNew, email, ip }.
+let emailCounter = 0;
+export async function signIn(env, { email = null, base = 'http://localhost', ip = null, jar = new Jar() } = {}) {
+  const address = email || `person${++emailCounter}-${Math.floor(Math.random() * 1e9)}@example.test`;
+  const addr = ip || loopbackIp();
+  const req = await callApi(env, 'POST', '/api/auth/request', { base, ip: addr, json: { email: address } });
+  if (req.status !== 200) throw new Error('request failed: ' + req.text);
+  const ver = await callApi(env, 'POST', '/api/auth/verify', { base, ip: addr, jar, json: { email: address, code: req.json.debugCode } });
+  if (ver.status !== 200) throw new Error('verify failed: ' + ver.text);
+  return { jar, account: ver.json.account, isNew: ver.json.isNew, email: address, ip: addr };
+}
+
+// A signing key with its identity record. The private key is extractable so a test can send it.
+export async function makeKey(displayName = 'Test Person', { createdAt = Date.now() } = {}) {
+  const { publicKey, privateKey } = await generateKeyPair({ extractable: true });
+  const publicJwk = await exportPublicJwk(publicKey);
+  const keyId = await keyIdOf(publicJwk);
+  const record = { v: 2, type: 'identity', publicKey: publicJwk, displayName, createdAt };
+  const signature = await signRecord(privateKey, record);
+  return { keyId, publicJwk, privateKey, record, signature, privateJwk: await exportPrivateJwk(privateKey), displayName };
+}
+
+// Inserts a document row for a key (the account tests do not need the whole chain).
+export function seedDocument(db, { docId, ownerKeyId, label = 'doc', listed = 1, status = 'active', version = 1, updatedAt = 1000 }) {
+  db.prepare(
+    'INSERT INTO documents (doc_id, owner_key_id, status, listed, head_version, head_record_hash, label, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(docId, ownerKeyId, status, listed, version, 'e'.repeat(64), label, updatedAt, updatedAt);
+}
+
+export const randomDocId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+
+// A stand in for fetch that records its calls. answer is a Response or a function (url, init) -> Response.
+export function stubFetch(answer) {
+  const calls = [];
+  const fn = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return typeof answer === 'function' ? answer(String(url), init) : answer;
+  };
+  fn.calls = calls;
+  return fn;
 }

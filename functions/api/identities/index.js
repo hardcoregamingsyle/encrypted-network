@@ -1,29 +1,14 @@
 // POST /api/identities: register a self signed identity.
 import { canonicalize } from '../../../shared/canonical.js';
-import { keyIdOf, normalizePublicJwk, verifyRecord } from '../../../shared/keys.js';
-import { LIMITS, validateRecord } from '../../../shared/records.js';
-import { ApiError, badRequest } from '../../_lib/errors.js';
+import { LIMITS } from '../../../shared/records.js';
 import { json, onlyMethods, rateKeyForRequest, readSignedBody } from '../../_lib/http.js';
-import { loadIdentity } from '../../_lib/identities.js';
+import { checkIdentityRecord, loadIdentity } from '../../_lib/identities.js';
 import { consumeRate } from '../../_lib/rate.js';
 import { assertFresh } from '../../_lib/time.js';
 
 export async function onRequestPost({ request, env }) {
   const { record, signature } = await readSignedBody(request);
-  const valid = validateRecord(record);
-  if (!valid.ok) throw badRequest(valid.error);
-  if (record.type !== 'identity') throw badRequest('record type must be identity');
-
-  let publicKey;
-  try {
-    publicKey = await normalizePublicJwk(record.publicKey);
-  } catch (err) {
-    throw badRequest('publicKey: ' + err.message);
-  }
-  if (!(await verifyRecord(publicKey, record, signature))) {
-    throw new ApiError('bad_signature', 'the identity is not signed by its own key');
-  }
-  const keyId = await keyIdOf(publicKey);
+  const { publicKey, keyId } = await checkIdentityRecord(record, signature);
 
   // An identity that is already registered is not an error, and its age does not matter.
   if (await loadIdentity(env, keyId)) return json({ keyId, existed: true });

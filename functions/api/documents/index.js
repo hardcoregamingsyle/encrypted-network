@@ -4,6 +4,7 @@
 //   that documents with the same updatedAt are not skipped (updatedAt is chosen by the signer).
 import { isDocId, isHash } from '../../../shared/records.js';
 import { badRequest } from '../../_lib/errors.js';
+import { docListRow } from '../../_lib/documents.js';
 import { headOf, intParam, json, onlyMethods } from '../../_lib/http.js';
 
 const MAX_QUERY_CHARS = 120;
@@ -48,18 +49,7 @@ export async function onRequestGet({ request, env }) {
     where.join(' AND ') +
     ' ORDER BY d.updated_at DESC, d.doc_id DESC LIMIT ?';
   const { results } = await env.DB.prepare(sql).bind(...args).all();
-  return json({
-    documents: results.map((r) => ({
-      docId: r.doc_id,
-      label: r.label,
-      ownerKeyId: r.owner_key_id,
-      ownerName: r.owner_name || '',
-      status: r.status,
-      headVersion: r.head_version,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at
-    }))
-  });
+  return json({ documents: results.map(docListRow) });
 }
 
 export const onRequestHead = headOf(onRequestGet);
