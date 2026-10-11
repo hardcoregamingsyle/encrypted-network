@@ -15,7 +15,11 @@ import { blobStore } from '../../../_lib/store.js';
 import { assertFresh } from '../../../_lib/time.js';
 
 export const PRIVATE_QUOTA_BYTES = 100 * 1024 * 1024; // per account
+export const PRIVATE_MAX_FILES = 200; // per account, the list shows this many
 const LABEL_MAX = 120;
+// Ranges (as numbers) of control, invisible and direction changing characters, which a name must not contain.
+const BAD_CHARS = [[0, 31], [127, 159], [0x200b, 0x200f], [0x2028, 0x202e], [0x2060, 0x2064], [0x2066, 0x2069], [0xfeff, 0xfeff]];
+const hasBadChar = (s) => Array.from(s).some((ch) => BAD_CHARS.some(([a, b]) => ch.codePointAt(0) >= a && ch.codePointAt(0) <= b));
 
 export async function onRequestGet({ request, env }) {
   const auth = await requireAuth(env, request);
@@ -40,7 +44,7 @@ export async function onRequestPost({ request, env }) {
   } catch {
     // a label that is not valid text is refused below
   }
-  if (!label || Array.from(label).length > LABEL_MAX || /[\u0000-\u001f\u007f]/.test(label)) throw badRequest('the name must be 1 to 120 plain characters');
+  if (!label || Array.from(label).length > LABEL_MAX || hasBadChar(label)) throw badRequest('the name must be 1 to 120 plain characters');
   const length = h.get('content-length');
   if (!/^[0-9]{1,15}$/.test(length || '')) throw new ApiError('bad_request', 'content-length is required', { status: 411 });
   const size = Number(length);
@@ -61,11 +65,12 @@ export async function onRequestPost({ request, env }) {
     'INSERT INTO private_files (id, account_id, label, size, blob_hash, signer, signed_at, signature, created_at) ' +
       'SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ' +
       '(SELECT COALESCE(SUM(size), 0) FROM private_files WHERE account_id = ?) + ? <= ? AND ' +
+      '(SELECT COUNT(*) FROM private_files WHERE account_id = ?) < ? AND ' +
       "(SELECT COALESCE(SUM(size), 0) FROM private_files) + (SELECT COALESCE(bytes, 0) FROM blob_totals WHERE k = 'all') + ? <= ?"
   )
-    .bind(id, auth.row.id, label, size, hash, signer, record.createdAt, signature, auth.now, auth.row.id, size, PRIVATE_QUOTA_BYTES, size, GLOBAL_BLOB_CAP_BYTES)
+    .bind(id, auth.row.id, label, size, hash, signer, record.createdAt, signature, auth.now, auth.row.id, size, PRIVATE_QUOTA_BYTES, auth.row.id, PRIVATE_MAX_FILES, size, GLOBAL_BLOB_CAP_BYTES)
     .run();
-  if (!taken.meta || taken.meta.changes < 1) throw new ApiError('too_large', 'your private files are full or the file store is full');
+  if (!taken.meta || taken.meta.changes < 1) throw new ApiError('too_large', 'your private files are full (size or number) or the file store is full');
 
   const { readable, state, done } = checkedBody(request.body, size);
   try {
@@ -78,6 +83,11 @@ export async function onRequestPost({ request, env }) {
     throw err;
   }
   await done;
+  // The owner may have deleted the file while it was still arriving: the bytes must not stay behind.
+  if (!(await env.DB.prepare('SELECT 1 AS x FROM private_files WHERE id = ?').bind(id).first())) {
+    await blobStore(env).delete('private/' + id);
+    throw new ApiError('not_found', 'the file was removed while it was being uploaded');
+  }
   return authJson(auth, { id, size }, 201);
 }
 
