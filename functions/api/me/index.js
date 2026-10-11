@@ -43,6 +43,7 @@ export async function onRequestDelete({ request, env }) {
   }
   await env.DB.batch([
     env.DB.prepare('DELETE FROM private_files WHERE account_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM channel_members WHERE account_id = ?').bind(id),
     env.DB.prepare('DELETE FROM sessions WHERE account_id = ?').bind(id),
     env.DB.prepare('DELETE FROM otp_codes WHERE email_hash = ?').bind(hash),
     env.DB.prepare('DELETE FROM account_secrets WHERE account_id = ?').bind(id),
