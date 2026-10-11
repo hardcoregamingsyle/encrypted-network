@@ -18,6 +18,7 @@ import {
   compareFingerprint,
   compareWithHead,
   compareWithOlder,
+  compareWithPublicHead,
   describeOlderComparison,
   fingerprintOfFile,
   parseDocInput,
@@ -50,13 +51,20 @@ function HeadVerdict({ cmp }) {
   if (cmp.state === 'same') {
     return cmp.verified ? (
       <Callout tone="good" title={`Same as the latest signed version${v}`}>
-        The fingerprint of your file equals the fingerprint inside the file the owner signed for the latest version. The
+        {cmp.detail || 'The fingerprint of your file equals the fingerprint inside the file the owner signed for the latest version.'} The
         document's signatures and version chain also checked out. Only the contents are compared, not file names.
       </Callout>
     ) : (
       <Callout tone="warn" title={`Same as the file in the latest version${v}, but the document did not fully check out`}>
         Your file equals the file stored in the latest version, but not every check on the document passed, so do not
         rely on it. See the document checks below.
+      </Callout>
+    );
+  }
+  if (cmp.state === 'no_match') {
+    return (
+      <Callout tone="warn" title={`No match with the latest signed version${v}`}>
+        {cmp.detail}
       </Callout>
     );
   }
@@ -137,10 +145,6 @@ export default function FileSection({ pinned }) {
       return;
     }
     const used = tidyPassword(docPassword) || p.password;
-    if (!used) {
-      setDocError('Enter the document password. Without it the stored file cannot be opened for comparison.');
-      return;
-    }
     setDocError('');
     const mine = ++cmpRun.current;
     stopOlder.current = true;
@@ -149,14 +153,14 @@ export default function FileSection({ pinned }) {
     try {
       const open = await openDocument({
         docId: p.docId,
-        password: used,
+        password: used || undefined,
         pinnedServerKeyId: pinned,
         onStep: (id, text) => {
           if (cmpRun.current === mine) setCmp((c) => ({ ...c, step: text }));
         }
       });
       if (cmpRun.current !== mine) return;
-      const result = compareWithHead(fp.hash, open);
+      const result = used ? compareWithHead(fp.hash, open) : await compareWithPublicHead(fp.hash, open);
       const records = open.bundle && Array.isArray(open.bundle.records) ? open.bundle.records : [];
       setCmp({
         phase: 'done',
@@ -170,7 +174,7 @@ export default function FileSection({ pinned }) {
           plaintextCheck: open.plaintextCheck,
           fingerprint: open.fingerprint,
           file: open.file ? { name: open.file.name, size: open.file.data.length } : null,
-          passwordGiven: true
+          passwordGiven: Boolean(used)
         }
       });
     } catch (err) {
@@ -201,7 +205,7 @@ export default function FileSection({ pinned }) {
 
   const comparing = cmp.phase === 'working';
   const result = cmp.result;
-  const canOlder = result && result.state === 'different' && result.verified && result.records.length > 1;
+  const canOlder = result && result.password && result.state === 'different' && result.verified && result.records.length > 1;
 
   return (
     <Section
@@ -264,8 +268,9 @@ export default function FileSection({ pinned }) {
       <form className="verify-block verify-form" onSubmit={onCompare} noValidate>
         <h3 className="verify-subtitle">Compare with a document</h3>
         <p>
-          Unlocks the latest version of a document with its password and checks whether the file you chose has the same
-          contents.
+          Checks whether the file you chose is the latest version of a document. No password is needed for the plain file
+          or the locked .hrdlock copy of a public document. With the password, the stored file is unlocked and compared.
+          The file you chose stays on this computer.
         </p>
         <Field label="Document id or link">
           <input
@@ -284,11 +289,11 @@ export default function FileSection({ pinned }) {
           />
         </Field>
         <Field
-          label="Document password"
+          label="Document password (optional)"
           hint={
             docParsed && docParsed.ok && docParsed.password
               ? 'The link already includes a password. Leave this empty to use it.'
-              : 'Stays in this browser. Opening the file takes a moment.'
+              : 'Stays in this browser. With a password, opening the file takes a moment.'
           }
           error={docError}
         >
@@ -306,7 +311,7 @@ export default function FileSection({ pinned }) {
         </Field>
         <div className="ui-row">
           <Button type="submit" variant="primary" loading={comparing}>
-            {comparing ? 'Comparing' : 'Unlock and compare'}
+            {comparing ? 'Comparing' : 'Compare'}
           </Button>
         </div>
       </form>
