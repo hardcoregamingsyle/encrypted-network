@@ -92,7 +92,7 @@ export async function readSignedBody(request) {
   const body = await readJson(request);
   if (!isObject(body.record)) throw badRequest('record must be an object');
   if (typeof body.signature !== 'string') throw badRequest('signature must be a string');
-  return { record: body.record, signature: body.signature };
+  return { record: body.record, signature: body.signature, body };
 }
 
 // Integer query parameter. Missing gives the default. Anything else out of range is a 400.
