@@ -164,12 +164,15 @@ export async function sendMail(env, message, { fetchImpl = globalThis.fetch } = 
         }),
         deadline
       ]);
-    } catch {
+    } catch (err) {
+      // Only the kind of failure is logged, never an address, a code or anything the provider said.
+      console.error('the mail provider could not be reached (' + String((err && err.name) || 'error') + ')');
       throw failed();
     }
     if (!res || !res.ok) {
       dropBody(res);
       if (res && (res.status === 400 || res.status === 422)) throw refused(res.status);
+      if (res) console.error('the mail provider answered HTTP ' + res.status);
       throw failed();
     }
     if (!req.needsSuccessFlag) {
