@@ -28,7 +28,8 @@ export function ChannelCard({ channel, now }) {
   const stamp = Number.isFinite(channel.lastMessageAt) ? channel.lastMessageAt : null;
   const time = stamp !== null ? chatListTime(stamp, now) : '';
   const unread = unreadCount(channel);
-  const sub = preview || (count === 0 ? 'No messages yet' : count === 1 ? '1 message' : `${count} messages`);
+  const base = count === 0 ? 'No messages yet' : count === 1 ? '1 message' : `${count} messages`;
+  const sub = preview || (channel.private === true ? `Private chat. ${base}` : base);
   return (
     <li className="ui-items__row chat-row">
       <Link className="ui-item chat-row__link" to={`/chats/${encodeURIComponent(textOf(channel.channelId))}`}>
@@ -157,7 +158,7 @@ export default function ChannelList({ query = '', reloadKey = 0, onNewChat }) {
           ) : null
         }
       >
-        Chats are public. Anyone can read them, and every message is signed by the person who wrote it.
+        Public chats can be read by anyone, private chats only by the people in them. Every message is signed by the person who wrote it.
       </EmptyState>
     );
   }
