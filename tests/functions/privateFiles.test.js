@@ -36,6 +36,23 @@ async function upload({ env, s, k }, bytes, over = {}) {
 }
 
 describe.each(['r2', 'kv'])('private files on %s', (kind) => {
+  it('deleting removes the bytes first: when that fails the file stays and the delete can be tried again', async () => {
+    const ctx = await setup(kind);
+    const id = (await upload(ctx, lockedBytes(300))).json.id;
+    const store = kind === 'kv' ? ctx.env.BLOBS : ctx.env.FILES;
+    const real = store.delete;
+    store.delete = async () => {
+      throw new Error('storage down');
+    };
+    const failed = await callApi(ctx.env, 'DELETE', '/api/me/files/' + id, { jar: ctx.s.jar });
+    expect(failed.status).toBe(500);
+    expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM private_files').get().n).toBe(1);
+    store.delete = real;
+    expect((await callApi(ctx.env, 'DELETE', '/api/me/files/' + id, { jar: ctx.s.jar })).status).toBe(200);
+    expect(ctx.db.prepare('SELECT COUNT(*) AS n FROM private_files').get().n).toBe(0);
+    expect((await callApi(ctx.env, 'DELETE', '/api/me/files/' + id, { jar: ctx.s.jar })).status).toBe(404);
+  });
+
   it('stores a file, lists it, gives the same bytes back with the owner signature, and deletes it', async () => {
     const ctx = await setup(kind);
     const bytes = lockedBytes(400);
