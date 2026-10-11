@@ -1,6 +1,6 @@
 // Runs every attack script in this folder against one server and prints a summary.
 // node tests/review/backend/run-all.mjs http://127.0.0.1:8791 [--heavy]
-// --heavy also runs blobquota.mjs (about 650 MiB of uploads). invariants.mjs always runs last.
+// --heavy also runs blobquota.mjs (about 620 MiB of uploads). invariants.mjs always runs last.
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

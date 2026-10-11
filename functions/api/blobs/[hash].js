@@ -1,10 +1,11 @@
-// Locked file storage in R2, addressed by the sha256 of the locked bytes.
+// Locked file storage (KV or R2, see _lib/store.js), addressed by the sha256 of the locked bytes.
 //   PUT  /api/blobs/:hash   signed upload (headers x-hrd-key, x-hrd-time, x-hrd-sig)
 //   GET  /api/blobs/:hash   raw bytes, cached for good because the address is the hash
 //   HEAD /api/blobs/:hash
 import { LIMITS, isHash, validateRecord } from '../../../shared/records.js';
 import { ApiError, badRequest, notFound } from '../../_lib/errors.js';
 import { blobKey, storeBlob } from '../../_lib/blobs.js';
+import { blobStore } from '../../_lib/store.js';
 import { json, onlyMethods } from '../../_lib/http.js';
 import { requireSigner } from '../../_lib/identities.js';
 import { consumeRate } from '../../_lib/rate.js';
@@ -75,20 +76,20 @@ function notModified(request, hash) {
 
 export async function onRequestGet({ request, env, params }) {
   const hash = hashParam(params);
-  if (notModified(request, hash) && (await env.FILES.head(blobKey(hash)))) {
+  if (notModified(request, hash) && (await blobStore(env).head(blobKey(hash)))) {
     return new Response(null, {
       status: 304,
       headers: { ETag: `"${hash}"`, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff' }
     });
   }
-  const object = await env.FILES.get(blobKey(hash));
+  const object = await blobStore(env).get(blobKey(hash));
   if (!object) throw notFound('file not found');
   return new Response(object.body, { status: 200, headers: blobHeaders(object, hash) });
 }
 
 export async function onRequestHead({ env, params }) {
   const hash = hashParam(params);
-  const object = await env.FILES.head(blobKey(hash));
+  const object = await blobStore(env).head(blobKey(hash));
   if (!object) throw notFound('file not found');
   return new Response(null, { status: 200, headers: blobHeaders(object, hash) });
 }

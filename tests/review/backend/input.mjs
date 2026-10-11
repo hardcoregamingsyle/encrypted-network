@@ -134,12 +134,12 @@ await check('blob PUT with Content-Length larger than the body (client stops ear
   eq(got.bytes.length, 5000, 'full blob after retry');
 });
 
-await check('blob PUT with Content-Length over the maximum (50 MiB + 4097 bytes actually sent) is refused', async () => {
+await check('blob PUT with Content-Length over the maximum (20 MiB + 4097 bytes actually sent) is refused', async () => {
   const b = await makeBlob(300);
   const time = Date.now();
-  const rec = { v: 2, type: 'blob.put', hash: b.hash, size: 52428800 + 4097, signer: alice.keyId, createdAt: time };
-  const head = `PUT /api/blobs/${b.hash} HTTP/1.1\r\nHost: x\r\nContent-Length: ${52428800 + 4097}\r\nx-hrd-key: ${alice.keyId}\r\nx-hrd-time: ${time}\r\nx-hrd-sig: ${'A'.repeat(86)}\r\nConnection: close\r\n\r\n`;
-  const r = await rawHttp([head, Buffer.alloc(52428800 + 4097)], { waitMs: 30000 });
+  const rec = { v: 2, type: 'blob.put', hash: b.hash, size: 20971520 + 4097, signer: alice.keyId, createdAt: time };
+  const head = `PUT /api/blobs/${b.hash} HTTP/1.1\r\nHost: x\r\nContent-Length: ${20971520 + 4097}\r\nx-hrd-key: ${alice.keyId}\r\nx-hrd-time: ${time}\r\nx-hrd-sig: ${'A'.repeat(86)}\r\nConnection: close\r\n\r\n`;
+  const r = await rawHttp([head, Buffer.alloc(20971520 + 4097)], { waitMs: 30000 });
   assert(r.status === 413, 'answered ' + r.status);
   void rec;
 });

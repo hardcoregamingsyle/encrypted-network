@@ -129,7 +129,7 @@ describe('route handlers: checks that happen before any database use', () => {
   it('blob PUT refuses an oversized Content-Length with too_large', async () => {
     const req = new Request('http://x.test/api/blobs/' + 'b'.repeat(64), {
       method: 'PUT',
-      headers: { ...goodHeaders, 'content-length': String(52428800 + 4096 + 1) },
+      headers: { ...goodHeaders, 'content-length': String(20971520 + 4096 + 1) },
       body: new Uint8Array(1)
     });
     // fetch() normally forbids lying about the length, so build the check on a plain object.

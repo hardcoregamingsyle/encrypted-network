@@ -6,9 +6,9 @@
   "description": "signed document and file system with a chat network, runs on Cloudflare Pages",
   "scripts": {
     "dev:web": "vite",
-    "dev:api": "wrangler pages dev --proxy 5173 --port 8788 --d1 DB --r2 FILES",
+    "dev:api": "wrangler pages dev --proxy 5173 --port 8788",
     "build": "node scripts/check-node.mjs && vite build",
-    "preview": "vite build && wrangler pages dev dist --port 8788 --d1 DB --r2 FILES",
+    "preview": "vite build && wrangler pages dev dist --port 8788",
     "setup": "node scripts/setup-dev.mjs",
     "check:deploy": "node scripts/check-deploy.mjs",
     "takedown": "node scripts/takedown.mjs",

@@ -2,6 +2,7 @@
 // must start with a locked file header, and a file an operator removed cannot come back.
 import { LIMITS } from '../../shared/records.js';
 import { ApiError, badRequest, isUniqueConflict } from './errors.js';
+import { blobStore } from './store.js';
 
 export const blobKey = (hash) => 'blobs/' + hash;
 
@@ -15,7 +16,7 @@ const MAX_ITERATIONS = 2000000;
 
 export const PENDING_TTL_MS = 2 * 60 * 60 * 1000; // a reserved upload that never finished is swept after this
 export const MAX_PENDING_PER_SIGNER = 4; // uploads one signer may have in flight at once
-export const GLOBAL_BLOB_CAP_BYTES = 10 * 1024 * 1024 * 1024; // all stored and reserved bytes together
+export const GLOBAL_BLOB_CAP_BYTES = 900 * 1024 * 1024; // all stored and reserved bytes together, under the 1 GB of the free KV plan
 
 // Returns a problem text, or null when the first 53 bytes look like a locked file header.
 export function lockHeaderProblem(head) {
@@ -59,7 +60,7 @@ export function headerCheckStage() {
   return { stage, state };
 }
 
-// Pipes the request body through the header check into a stream R2 accepts (it needs a known
+// Pipes the request body through the header check into a stream the store accepts (a known
 // length). Returns { readable, state, done } where done never rejects.
 export function checkedBody(body, size) {
   const { stage, state } = headerCheckStage();
@@ -134,6 +135,7 @@ async function dropReservation(db, hash, signer) {
 // request body, hash, size and signer have been checked by the caller.
 export async function storeBlob(env, { body, hash, size, signer, now }) {
   const db = env.DB;
+  const store = blobStore(env);
   if (size < MIN_LOCKED_BYTES) throw badRequest('the file is too short to be a locked file');
   if (await db.prepare('SELECT 1 AS x FROM blocked_blobs WHERE hash = ?').bind(hash).first()) {
     throw new ApiError('forbidden', 'this file was removed by the operator and cannot be stored again');
@@ -146,8 +148,8 @@ export async function storeBlob(env, { body, hash, size, signer, now }) {
     if (known.size !== size) throw badRequest('a file with this hash is stored with a different size');
     if (known.pending === 1) {
       // An upload that stored its object but never finished the row (the worker stopped in between):
-      // the object is complete in R2, so finish the row now instead of making everyone wait for the sweep.
-      const object = await env.FILES.head(blobKey(hash));
+      // the object is complete in the store, so finish the row now instead of making everyone wait for the sweep.
+      const object = await store.head(blobKey(hash));
       if (object && object.size === size) {
         await db.prepare('UPDATE blobs SET pending = 0 WHERE hash = ? AND pending = 1').bind(hash).run();
         return { exists: true };
@@ -158,7 +160,7 @@ export async function storeBlob(env, { body, hash, size, signer, now }) {
     }
     return { exists: true };
   }
-  const stored = await env.FILES.head(blobKey(hash));
+  const stored = await store.head(blobKey(hash));
   if (stored) {
     // The object is there but its row is missing (an earlier upload stopped half way). Repair the row.
     if (stored.size !== size) throw badRequest('a file with this hash is stored with a different size');
@@ -176,8 +178,8 @@ export async function storeBlob(env, { body, hash, size, signer, now }) {
   const { readable, state, done } = checkedBody(body, size);
   let object;
   try {
-    // R2 checks the sha256 itself while it stores the bytes.
-    object = await env.FILES.put(blobKey(hash), readable, { sha256: hash });
+    // The store checks the sha256 itself (R2 while it stores the bytes, KV before it writes them).
+    object = await store.put(blobKey(hash), readable, { sha256: hash, size });
   } catch (err) {
     await done;
     await dropReservation(db, hash, signer);
@@ -189,7 +191,7 @@ export async function storeBlob(env, { body, hash, size, signer, now }) {
   await done;
   if (!object || object.size !== size) {
     try {
-      await env.FILES.delete(blobKey(hash));
+      await store.delete(blobKey(hash));
     } catch {
       // nothing more to do
     }
@@ -212,7 +214,7 @@ export async function storeBlob(env, { body, hash, size, signer, now }) {
     }
     if (!ok) {
       try {
-        await env.FILES.delete(blobKey(hash));
+        await store.delete(blobKey(hash));
       } catch {
         // nothing more to do
       }

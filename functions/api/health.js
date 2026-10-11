@@ -3,10 +3,11 @@
 // nothing it serves is anchored by a checkpoint).
 import { headOf, json, onlyMethods } from '../_lib/http.js';
 import { loadServerKey } from '../_lib/serverKey.js';
+import { blobStore } from '../_lib/store.js';
 
 export async function onRequestGet({ env }) {
   await env.DB.prepare('SELECT 1 AS ok').first();
-  await env.FILES.head('health-probe');
+  await blobStore(env).head('health-probe');
   const key = await loadServerKey(env);
   return json({ ok: true, signing: Boolean(key) });
 }

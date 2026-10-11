@@ -105,19 +105,26 @@ describe('wrangler.toml', () => {
   it('is a Pages config with the bindings the code uses', () => {
     expect(toml).toMatch(/^pages_build_output_dir\s*=\s*"\.\/dist"/m);
     expect(toml).toMatch(/binding\s*=\s*"DB"/);
-    expect(toml).toMatch(/binding\s*=\s*"FILES"/);
+    expect(toml).toMatch(/binding\s*=\s*"BLOBS"/);
+    // R2 is optional: the file store only uses a FILES binding when one is present
+    expect(toml).not.toMatch(/binding\s*=\s*"FILES"/);
     expect(toml).toMatch(/migrations_dir\s*=\s*"migrations"/);
     const used = new Set();
     for (const f of walk(join(ROOT, 'functions'))) for (const m of code(f).matchAll(/env\.([A-Z_]+)/g)) used.add(m[1]);
-    expect([...used].sort()).toEqual(['DB', 'FILES', 'SERVER_SIGNING_JWK']);
+    expect([...used].sort()).toEqual(['BLOBS', 'DB', 'FILES', 'SERVER_SIGNING_JWK']);
   });
   it('compatibility_date is not in the future and no node compat flag is needed', () => {
     const d = toml.match(/compatibility_date\s*=\s*"(\d{4}-\d{2}-\d{2})"/)[1];
     expect(new Date(d).getTime()).toBeLessThanOrEqual(Date.now());
     expect(toml).not.toMatch(/nodejs_compat/);
   });
-  it('still has the placeholder database id (a human must replace it before deploying)', () => {
-    expect(toml).toContain('00000000-0000-0000-0000-000000000000');
+  it('has a real database id and a real KV namespace id, not placeholders', () => {
+    const dbId = toml.match(/database_id\s*=\s*"([^"]+)"/)[1];
+    expect(dbId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(dbId).not.toBe('00000000-0000-0000-0000-000000000000');
+    const kvId = toml.match(/\[\[kv_namespaces\]\][\s\S]*?\bid\s*=\s*"([^"]+)"/)[1];
+    expect(kvId).toMatch(/^[0-9a-f]{32}$/);
+    expect(kvId).not.toMatch(/^0+$/);
   });
 });
 

@@ -6,7 +6,7 @@
 // What it does, in this order:
 //   1. records the hash in blocked_blobs, so the same bytes can not be uploaded again
 //   2. removes the blobs row (the stored byte count goes down with it)
-//   3. deletes the object from the R2 bucket
+//   3. deletes the stored file from the KV namespace (binding BLOBS)
 // What it does NOT do: it never touches the ledger or any document record. Records are signed
 // history. A document that pointed at this file keeps its record, but the file can no longer be
 // fetched, so "unlock and verify the file" will fail for it. Say so to the people concerned.
@@ -16,7 +16,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const WRANGLER = join(ROOT, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
-const BUCKET = 'hrdlock-files'; // keep in step with wrangler.toml
 
 function parse(argv) {
   const out = { hash: '', reason: '', remote: false, local: false, persistTo: null, dryRun: false };
@@ -49,7 +48,7 @@ export function planTakedown({ hash, reason, remote, local, persistTo }) {
   return [
     sql(`INSERT OR REPLACE INTO blocked_blobs (hash, reason, created_at) VALUES ('${hash}', '${quoted}', ${Date.now()})`),
     sql(`DELETE FROM blobs WHERE hash = '${hash}'`),
-    ['r2', 'object', 'delete', `${BUCKET}/blobs/${hash}`, ...target]
+    ['kv', 'key', 'delete', `blobs/${hash}`, '--binding', 'BLOBS', ...target]
   ];
 }
 

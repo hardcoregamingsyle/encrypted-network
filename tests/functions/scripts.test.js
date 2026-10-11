@@ -22,8 +22,9 @@ describe('takedown plan', () => {
     expect(steps[0].at(-1)).toContain('blocked_blobs');
     expect(steps[0].at(-1)).toContain(HASH);
     expect(steps[1].at(-1)).toBe(`DELETE FROM blobs WHERE hash = '${HASH}'`);
-    expect(steps[2].slice(0, 3)).toEqual(['r2', 'object', 'delete']);
-    expect(steps[2][3]).toBe(`hrdlock-files/blobs/${HASH}`);
+    expect(steps[2].slice(0, 3)).toEqual(['kv', 'key', 'delete']);
+    expect(steps[2][3]).toBe(`blobs/${HASH}`);
+    expect(steps[2].slice(4, 6)).toEqual(['--binding', 'BLOBS']);
     for (const s of steps) expect(s).toContain('--remote');
   });
 

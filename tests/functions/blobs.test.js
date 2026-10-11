@@ -13,14 +13,18 @@ import {
 import { ApiError } from '../../functions/_lib/errors.js';
 import { sha256Hex } from '../../shared/hash.js';
 import { LIMITS } from '../../shared/records.js';
-import { fakeD1, fakeR2, lockedBytes, newDatabase, streamOfBytes } from './fakes.js';
+import { fakeD1, fakeKV, fakeR2, lockedBytes, newDatabase, streamOfBytes } from './fakes.js';
 
 const SIGNER = 'a'.repeat(64);
 const OTHER = 'b'.repeat(64);
 
+// the same tests run on R2 (default) and on KV (tests/functions/*.kv.test.js sets the kind first)
+const newStore = () => (globalThis.__STORE_KIND === "kv" ? { BLOBS: fakeKV() } : { FILES: fakeR2() });
+const objectsOf = (env) => (env.FILES || env.BLOBS).objects;
+
 function setup(hooks) {
   const db = newDatabase();
-  return { db, env: { DB: fakeD1(db, hooks), FILES: fakeR2() } };
+  return { db, env: { DB: fakeD1(db, hooks), ...newStore() } };
 }
 
 async function upload(env, bytes, { signer = SIGNER, now = Date.now(), hash = null, chunk = 1000 } = {}) {
@@ -121,7 +125,7 @@ describe('storeBlob', () => {
     expect(r).toHaveLength(1);
     expect(r[0]).toMatchObject({ size: 400, uploader: SIGNER, pending: 0 });
     expect(db.prepare("SELECT bytes FROM blob_totals WHERE k = 'all'").get().bytes).toBe(400);
-    expect(env.FILES.objects.size).toBe(1);
+    expect(objectsOf(env).size).toBe(1);
   });
 
   it('answers exists for a second upload of the same file and keeps one row', async () => {
@@ -138,7 +142,7 @@ describe('storeBlob', () => {
     const err = await failure(upload(env, bytes));
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe('bad_request');
-    expect(env.FILES.objects.size).toBe(0);
+    expect(objectsOf(env).size).toBe(0);
     expect(rows(db)).toHaveLength(0);
     expect(db.prepare("SELECT bytes FROM blob_totals WHERE k = 'all'").get().bytes).toBe(0);
   });
@@ -193,14 +197,14 @@ describe('storeBlob', () => {
     const err = await failure(upload(env, bytes));
     expect(err.code).toBe('forbidden');
     expect(err.status).toBe(403);
-    expect(env.FILES.objects.size).toBe(0);
+    expect(objectsOf(env).size).toBe(0);
   });
 
   it('repairs a missing row when the object is already stored', async () => {
     const { db, env } = setup();
     const bytes = lockedBytes(400);
     const hash = await sha256Hex(bytes);
-    env.FILES.objects.set('blobs/' + hash, bytes);
+    objectsOf(env).set('blobs/' + hash, bytes);
     expect(await upload(env, bytes)).toEqual({ exists: true });
     expect(rows(db)[0]).toMatchObject({ hash, pending: 0, uploader: SIGNER });
   });
@@ -223,7 +227,7 @@ describe('quota is reserved before streaming', () => {
 
   it('parallel uploads of one signer can never hold more than the quota together', async () => {
     const { db, env } = setup();
-    const size = 120 * 1024 * 1024; // four of these are over the 500 MiB quota
+    const size = 48 * 1024 * 1024; // five of these are over the 200 MiB quota
     // The quota is checked against the declared size, so the bytes themselves can stay small in this test:
     // the upload fails later on a size mismatch, but only after the reservation was taken.
     const jobs = [];
@@ -245,7 +249,7 @@ describe('quota is reserved before streaming', () => {
     expect(reserved.n).toBeLessThanOrEqual(4);
     for (const g of gates) g.release();
     const out = await Promise.all(jobs);
-    // 4 fit under the quota (480 MiB) and the others were refused while they ran.
+    // 4 fit under the quota (192 MiB) and the others were refused while they ran.
     expect(out.filter((o) => o === 'too_large' || o === 'rate_limited').length).toBeGreaterThanOrEqual(2);
     // Nothing is left: every stored attempt failed on the size check, which drops its reservation.
     expect(db.prepare('SELECT COUNT(*) AS n FROM blobs').get().n).toBe(0);
@@ -298,7 +302,7 @@ describe('quota is reserved before streaming', () => {
     const bytes = lockedBytes(400);
     const hash = await sha256Hex(bytes);
     db.prepare('INSERT INTO blobs (hash, size, uploader, created_at, pending) VALUES (?, 400, ?, ?, 1)').run(hash, OTHER, Date.now());
-    env.FILES.objects.set('blobs/' + hash, bytes);
+    objectsOf(env).set('blobs/' + hash, bytes);
     expect(await upload(env, bytes)).toEqual({ exists: true });
     expect(rows(db)[0]).toMatchObject({ pending: 0, uploader: OTHER });
   });

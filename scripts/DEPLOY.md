@@ -13,14 +13,15 @@ the plain list of what the service does and does not promise.
 ## 2. First deploy
 
 1. `npx wrangler d1 create hrdlock`, put the printed id in `wrangler.toml` as `database_id`.
-2. `npx wrangler r2 bucket create hrdlock-files`.
+2. `npx wrangler kv namespace create hrdlock-blobs`, put the printed id in `wrangler.toml` under `[[kv_namespaces]]` (binding `BLOBS`). The locked files live in this KV namespace. KV needs nothing enabled on the account. If you would rather use R2 later, bind a bucket as `FILES` and the server prefers it.
 3. `npx wrangler d1 migrations apply DB --remote` (applies every file in `migrations/`, in order. Run it
    again after every update that adds a migration, before the new code goes live).
 4. Make the server signing key ONCE, into a file, and keep a copy offline:
    `node scripts/setup-dev.mjs --write-production-key server-key.json`
    It prints the key id. Write the id down, it is what verifiers pin.
 5. Store it as a secret for Production, and for Preview if you use preview deployments (secrets are per
-   environment): `npx wrangler pages secret put SERVER_SIGNING_JWK --project-name <project> < server-key.json`
+   environment). In bash: `npx wrangler pages secret put SERVER_SIGNING_JWK --project-name <project> < server-key.json`
+   In PowerShell: `Get-Content server-key.json -Raw | npx wrangler pages secret put SERVER_SIGNING_JWK --project-name <project>`
 6. Deploy, then run `node scripts/check-deploy.mjs https://<site> --key-id <the id from step 4>`.
    It fails when the API is down or when signing is off. Without the secret the site still works, but
    nothing it serves is anchored by a checkpoint and every document check fails its anchor test.
@@ -61,11 +62,13 @@ the plain list of what the service does and does not promise.
 | Messages | 20 per minute per identity |
 | Document records | 30 per hour per identity, at most 200 records per document (199 versions plus a final revoke) |
 | Channels | 10 per hour per identity |
-| File uploads | 30 per hour per identity, 4 in flight at once, 500 MiB stored per identity, 10 GiB stored in total |
-| One locked file | 50 MiB of file plus 4 KiB, must start with a locked file header |
+| File uploads | 30 per hour per identity, 4 in flight at once, 200 MiB stored per identity, 900 MiB stored in total |
+| One locked file | 20 MiB of file plus 4 KiB, must start with a locked file header |
 | JSON bodies | 64 KiB |
 | Ledger page | at most 200 entries |
 | Document list page | at most 100, channel list page at most 200 (both page on with a cursor) |
+
+The locked files are in Workers KV. On the free Cloudflare plan KV allows 1,000 writes a day (so about 1,000 uploads a day for the whole site) and 1 GB in total, which is why the server stops at 900 MiB. When KV says the write limit is reached, the upload answers `429 rate_limited` with a one hour `Retry-After`. A paid plan lifts both limits. The 20 MiB file limit comes from the 25 MiB KV value limit.
 
 A request without the `CF-Connecting-IP` header (Cloudflare always sets it) is refused, except on a local
 development host.

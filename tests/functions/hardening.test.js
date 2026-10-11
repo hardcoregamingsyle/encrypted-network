@@ -13,7 +13,7 @@ import * as health from '../../functions/api/health.js';
 import * as ledgerRoute from '../../functions/api/ledger.js';
 import { ZERO_HASH, bytesToHex } from '../../shared/encoding.js';
 import { recordHash } from '../../shared/records.js';
-import { fakeD1, fakeR2, migrationFiles, newDatabase } from './fakes.js';
+import { fakeD1, fakeKV, fakeR2, migrationFiles, newDatabase } from './fakes.js';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
@@ -34,13 +34,17 @@ async function thrown(p) {
   throw new Error('expected an error');
 }
 
+// the same tests run on R2 (default) and on KV (tests/functions/*.kv.test.js sets the kind first)
+const newStore = () => (globalThis.__STORE_KIND === "kv" ? { BLOBS: fakeKV() } : { FILES: fakeR2() });
+const objectsOf = (env) => (env.FILES || env.BLOBS).objects;
+
 function setup(hooks) {
   const db = newDatabase();
   db.prepare('INSERT INTO blobs (hash, size, uploader, created_at, pending) VALUES (?, 300, ?, 1, 0)').run(BLOB, OWNER);
   for (const [k, n] of [[OWNER, 'Owner'], [OTHER, 'Other']]) {
     db.prepare('INSERT INTO identities (key_id, public_jwk, display_name, created_at, record, signature) VALUES (?, ?, ?, 1, ?, ?)').run(k, '{}', n, '{}', 's');
   }
-  return { db, env: { DB: fakeD1(db, hooks), FILES: fakeR2() } };
+  return { db, env: { DB: fakeD1(db, hooks), ...newStore() } };
 }
 
 const docId = (n) => n.toString(16).padStart(32, '0');

@@ -4,15 +4,17 @@ name = "hrdlock"
 pages_build_output_dir = "./dist"
 compatibility_date = "2025-09-01"
 
-# Fill in the real id after running: wrangler d1 create hrdlock
-# Then apply the schema: wrangler d1 migrations apply DB --remote  (every file in migrations/, in order)
+# The database. Created with: wrangler d1 create hrdlock
+# Schema: wrangler d1 migrations apply DB --remote  (every file in migrations/, in order)
 [[d1_databases]]
 binding = "DB"
 database_name = "hrdlock"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "799fabd9-1c93-439b-9bb4-38806abbdfc2"
 migrations_dir = "migrations"
 
-# Create with: wrangler r2 bucket create hrdlock-files
-[[r2_buckets]]
-binding = "FILES"
-bucket_name = "hrdlock-files"
+# The locked files. Created with: wrangler kv namespace create hrdlock-blobs
+# One value holds one locked file (the KV limit is 25 MiB, the app limit is 20 MiB).
+# R2 can be used instead later: bind a bucket as FILES and the server prefers it.
+[[kv_namespaces]]
+binding = "BLOBS"
+id = "49e04c5edfb7481ea532e6ca26f5c0a3"

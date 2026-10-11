@@ -1,5 +1,5 @@
 // Test doubles for the Workers bindings: a D1 look alike on node:sqlite (all migrations applied) and a
-// small R2 look alike. Not a test file itself.
+// small R2 and KV look alikes. Not a test file itself.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,6 +101,40 @@ export function fakeR2() {
     },
     async delete(key) {
       objects.delete(key);
+    }
+  };
+}
+
+// KV look alike. objects holds the bytes, notes the metadata. failNextPut(text) makes the next put throw.
+export function fakeKV() {
+  const objects = new Map();
+  const notes = new Map();
+  let failure = null;
+  return {
+    objects,
+    notes,
+    failNextPut(text) {
+      failure = text;
+    },
+    async getWithMetadata(key) {
+      const b = objects.get(key);
+      if (!b) return { value: null, metadata: null, cacheStatus: null };
+      return { value: new Blob([b]).stream(), metadata: notes.has(key) ? notes.get(key) : null, cacheStatus: null };
+    },
+    async put(key, value, opts = {}) {
+      if (failure) {
+        const text = failure;
+        failure = null;
+        throw new Error(text);
+      }
+      const bytes = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)) : new Uint8Array(value);
+      if (bytes.length > 25 * 1024 * 1024) throw new Error("KV PUT failed: 413 Value length exceeds the 25 MiB limit");
+      objects.set(key, bytes);
+      notes.set(key, opts.metadata === undefined ? null : opts.metadata);
+    },
+    async delete(key) {
+      objects.delete(key);
+      notes.delete(key);
     }
   };
 }
