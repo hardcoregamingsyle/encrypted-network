@@ -171,9 +171,9 @@ describe('FilesPage', () => {
     }
   });
 
-  it('the switch is two buttons', () => {
+  it('the switch is three buttons', () => {
     const html = render(h(TabSwitch, { tab: 'public', onChange() {} }));
-    expect((html.match(/<button/g) || []).length).toBe(2);
+    expect((html.match(/<button/g) || []).length).toBe(3);
     expect(html).toContain('role="group"');
     expect(html).toContain('aria-label="Which files to show"');
   });
