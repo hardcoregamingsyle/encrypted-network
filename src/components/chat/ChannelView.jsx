@@ -14,6 +14,7 @@ import MessageList from './MessageList.jsx';
 import MessageMenu from './MessageMenu.jsx';
 import RoomDetails from './RoomDetails.jsx';
 import { deliverItem, prepareItem, refreshItem } from './sendFlow.js';
+import { PRIVATE_TEXT_MAX_BYTES, loadGroupKey, openText, sealText } from '../../lib/privateChat.js';
 import { checkServerTrust, composerStatus, firstUnreadSeq, isTrustMismatch, pinGetter, roomStatus } from './roomLogic.js';
 import { getMessages, postMessage } from '../../lib/api.js';
 import { canResend, createChatSession, createPoller, describeApiError, dropDelivered } from '../../lib/chatClient.js';
@@ -56,6 +57,9 @@ export default function ChannelView({ channelId }) {
   const [atBottom, setAtBottom] = useState(true);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState('');
+  const [groupKey, setGroupKey] = useState(null); // private chats: the key that unlocks the messages
+  const [keyTry, setKeyTry] = useState({ n: 0, failed: false });
+  const [plain, setPlain] = useState({}); // message hash -> unlocked text (null when it does not unlock)
   const [openedSeen] = useState(() => getLastSeen(channelId));
   const sessionRef = useRef(null);
   const pollerRef = useRef(null);
@@ -133,6 +137,38 @@ export default function ChannelView({ channelId }) {
     if (t) setTrust(t);
   }, [view.anchor]);
 
+  const isPrivate = Boolean(view.channel && view.channel.private);
+  useEffect(() => {
+    setGroupKey(null);
+    setPlain({});
+    if (!isPrivate) return undefined;
+    let live = true;
+    loadGroupKey(channelId).then(
+      (key) => live && setGroupKey(key),
+      () => live && setKeyTry((t) => ({ ...t, failed: true }))
+    );
+    return () => {
+      live = false;
+    };
+  }, [channelId, isPrivate, keyTry.n]);
+
+  // Unlocks the messages for display. What was signed and checked stays the locked text.
+  useEffect(() => {
+    if (!groupKey) return undefined;
+    let live = true;
+    (async () => {
+      const add = {};
+      for (const e of [...view.entries, ...pending]) {
+        if (plain[e.hash] === undefined) add[e.hash] = await openText(groupKey, channelId, e.record.body);
+      }
+      if (live && Object.keys(add).length > 0) setPlain((p) => ({ ...p, ...add }));
+    })();
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupKey, view.entries, pending]);
+
   const kick = useCallback(() => {
     if (pollerRef.current) pollerRef.current.kick();
   }, []);
@@ -162,10 +198,13 @@ export default function ChannelView({ channelId }) {
     async (body, parent) => {
       if (!identity) return { ok: false, error: 'You need to be signed in to write.' };
       if (sendLock.current) return { ok: false, error: 'The previous message is still being signed.' };
+      if (!view.channel) return { ok: false, error: 'This chat is still loading. Try again in a moment.' };
+      if (isPrivate && !groupKey) return { ok: false, error: 'This chat is still unlocking. Try again in a moment.' };
+      if (isPrivate && new TextEncoder().encode(body).length > PRIVATE_TEXT_MAX_BYTES) return { ok: false, error: 'That message is too long for a private chat. Shorten it a little.' };
       sendLock.current = true;
       let item;
       try {
-        item = await prepareItem({ channelId, body, parent, identity });
+        item = await prepareItem({ channelId, body: isPrivate ? await sealText(groupKey, channelId, body) : body, parent, identity });
       } catch (err) {
         return { ok: false, error: err && err.message ? err.message : 'Could not sign the message.' };
       } finally {
@@ -176,7 +215,7 @@ export default function ChannelView({ channelId }) {
       deliver(item);
       return { ok: true };
     },
-    [channelId, identity, deliver]
+    [channelId, identity, deliver, isPrivate, groupKey, view.channel]
   );
 
   const retry = useCallback(
@@ -237,6 +276,8 @@ export default function ChannelView({ channelId }) {
   const ownKeyId = identity ? identity.keyId : '';
   const firstUnread = useMemo(() => firstUnreadSeq(view.entries, openedSeen, ownKeyId), [view.entries, openedSeen, ownKeyId]);
   const status = roomStatus(view, poll);
+  // In a private chat the list shows the unlocked text, and never the locked text while it is still being unlocked.
+  const unlocked = (e) => (isPrivate ? { ...e, record: { ...e.record, body: plain[e.hash] === null ? 'This message could not be unlocked.' : plain[e.hash] || '...' } } : e);
 
   const header = (
     <ScreenHeader
@@ -244,7 +285,7 @@ export default function ChannelView({ channelId }) {
       backLabel="Back to chats"
       leading={<Avatar name={title} keyId={channelId} size={40} />}
       title={title}
-      subtitle="Public chat"
+      subtitle={isPrivate ? 'Private chat' : 'Public chat'}
       documentTitle={`${title} (chat)`}
       actions={
         <button type="button" className="chat-iconbtn chat-iconbtn--head" onClick={() => setDetailsOpen(true)} aria-haspopup="dialog" aria-label="Chat details">
@@ -323,14 +364,27 @@ export default function ChannelView({ channelId }) {
                 </Callout>
               </div>
             ) : null}
+            {isPrivate && !groupKey && keyTry.failed ? (
+              <div className="chat-room__notice">
+                <Callout tone="bad" title="Could not unlock this chat">
+                  <p>
+                    The messages cannot be read until the group password arrives.{' '}
+                    <Button size="sm" onClick={() => setKeyTry((t) => ({ n: t.n + 1, failed: false }))}>
+                      Try again
+                    </Button>
+                  </p>
+                </Callout>
+              </div>
+            ) : null}
             {aboutDoc ? (
               <div className="chat-room__notice">
                 <LinkedFileCard docId={aboutDoc} />
               </div>
             ) : null}
             <MessageList
-              entries={view.entries}
-              pending={pending}
+              entries={isPrivate ? view.entries.map(unlocked) : view.entries}
+              pending={isPrivate ? pending.map(unlocked) : pending}
+              isPrivate={isPrivate}
               identities={view.identities}
               ownKeyId={ownKeyId}
               ownName={identity ? identity.displayName : ''}
@@ -369,7 +423,7 @@ export default function ChannelView({ channelId }) {
           prompt.open('to reply in this chat');
         }}
       />
-      <RoomDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} channelId={channelId} view={view} poll={poll} trust={trust} />
+      <RoomDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} channelId={channelId} view={view} poll={poll} trust={trust} isPrivate={isPrivate} />
     </div>
   );
 }
