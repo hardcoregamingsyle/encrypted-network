@@ -356,6 +356,10 @@
   margin-top: 0.15rem;
 }
 
+.ui-check .ui-field__hint {
+  display: block;
+}
+
 /* a row that is part of a list or a box draws its keyboard ring inside, so the box cannot cut it off */
 .ui-item:focus-visible {
   outline-offset: -3px;
